@@ -11,10 +11,13 @@ never deployed and binds no ports.
 - `src/server.rs` — tool router, parameter schemas, `ServerHandler`.
 - `src/tools/github.rs` — GitHub API client and pure JSON summarization.
 - `src/tools/health.rs` — health-endpoint probing and truncation.
-- `src/tools/docs.rs` — monorepo doc fetching.
+- `src/tools/docs.rs` — monorepo doc fetching plus the embedded `org-map`
+  knowledge doc.
 - `src/tools/domain.rs` — RDAP + DNS-over-HTTPS domain reporting.
 - `src/tools/cloudflare.rs` — read-only Cloudflare zone/record listing.
 - `src/tools/k8s.rs` — allowlisted `kubectl get` runner and summarizers.
+- `src/tools/fiducia.rs` — read-only fiducia.cloud secret-presence and
+  lock/lease health check.
 
 ## Working here
 
