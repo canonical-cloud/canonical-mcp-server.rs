@@ -1,6 +1,7 @@
 pub mod cloudflare;
 pub mod docs;
 pub mod domain;
+pub mod fiducia;
 pub mod github;
 pub mod health;
 pub mod k8s;
