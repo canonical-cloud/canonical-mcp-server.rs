@@ -80,10 +80,13 @@ secret values, only presence, and never logs the fiducia token.
 - `src/tools/github.rs` — GitHub client plus pure JSON summarization
   (CI runs, `.gitmodules` parsing, pin comparison).
 - `src/tools/health.rs` — endpoint probing and body truncation.
-- `src/tools/docs.rs` — monorepo doc fetching.
+- `src/tools/docs.rs` — monorepo doc fetching plus the embedded `org-map`
+  knowledge doc.
 - `src/tools/domain.rs` — RDAP + DNS-over-HTTPS summarization and domain
   validation.
 - `src/tools/cloudflare.rs` — Cloudflare zone/record listing.
+- `src/tools/fiducia.rs` — fiducia.cloud secret-presence and lock/lease
+  health check.
 - `src/tools/k8s.rs` — allowlisted `kubectl get` runner and per-resource
   summarizers.
 
