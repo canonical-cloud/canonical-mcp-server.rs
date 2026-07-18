@@ -11,10 +11,13 @@ never deployed and binds no ports.
 - `src/server.rs` — tool router, parameter schemas, `ServerHandler`.
 - `src/tools/github.rs` — GitHub API client and pure JSON summarization.
 - `src/tools/health.rs` — health-endpoint probing and truncation.
-- `src/tools/docs.rs` — monorepo doc fetching.
+- `src/tools/docs.rs` — monorepo doc fetching plus the embedded `org-map`
+  knowledge doc.
 - `src/tools/domain.rs` — RDAP + DNS-over-HTTPS domain reporting.
 - `src/tools/cloudflare.rs` — read-only Cloudflare zone/record listing.
 - `src/tools/k8s.rs` — allowlisted `kubectl get` runner and summarizers.
+- `src/tools/fiducia.rs` — read-only fiducia.cloud secret-presence and
+  lock/lease health check.
 
 ## Working here
 
@@ -31,13 +34,15 @@ cargo test --all-targets
 - Tests never touch the network. Keep response interpretation in pure
   functions over `serde_json::Value`/`&str` fixtures; confine I/O to the thin
   client and orchestration functions.
-- Tools stay read-only against GitHub, Cloudflare, Kubernetes, and
-  deployments. Adding a mutating tool is a design change, not a patch.
+- Tools stay read-only against GitHub, Cloudflare, Kubernetes, fiducia.cloud,
+  and deployments. Adding a mutating tool is a design change, not a patch.
 - `k8s.rs` may only ever build `kubectl get` (and `kubectl config
   get-contexts`) argument vectors — never exec/delete/apply, and never via a
   shell.
 - Never log or echo tokens: the GitHub token goes only to `api.github.com`,
-  the Cloudflare token only to `api.cloudflare.com`.
+  the Cloudflare token only to `api.cloudflare.com`, and the fiducia token
+  only to `FIDUCIA_URL`. `fiducia.rs` fetches secret *presence*, never
+  secret values.
 - Truncate and bound anything returned from remote services.
 
 ## Command safety
