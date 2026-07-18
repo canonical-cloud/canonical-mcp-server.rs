@@ -281,5 +281,6 @@ mod tests {
             text.contains("repo-boundaries"),
             "schema mentions repo-boundaries: {text}"
         );
+        assert!(text.contains("org-map"), "schema mentions org-map: {text}");
     }
 }
