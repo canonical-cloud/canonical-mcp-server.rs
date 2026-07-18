@@ -256,6 +256,7 @@ mod tests {
             vec![
                 "cloudflare_dns",
                 "domain_status",
+                "fiducia_status",
                 "k8s_status",
                 "service_health",
                 "stack_ci_status",
