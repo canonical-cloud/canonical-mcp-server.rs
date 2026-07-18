@@ -53,7 +53,8 @@ pub struct ServiceHealthParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StackDocsParams {
-    /// Which document to fetch: "deploy" or "repo-boundaries".
+    /// Which document to fetch: "deploy", "repo-boundaries" (both live in
+    /// canonical-monorepo), or "org-map" (embedded org/infra knowledge).
     pub doc: docs::DocName,
 }
 
