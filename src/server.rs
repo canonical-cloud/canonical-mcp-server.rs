@@ -7,7 +7,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use crate::tools::{cloudflare, docs, domain, github, health, k8s};
+use crate::tools::{cloudflare, docs, domain, fiducia, github, health, k8s};
 
 pub struct CanonicalMcp {
     http: reqwest::Client,
@@ -53,7 +53,8 @@ pub struct ServiceHealthParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StackDocsParams {
-    /// Which document to fetch: "deploy" or "repo-boundaries".
+    /// Which document to fetch: "deploy", "repo-boundaries" (both live in
+    /// canonical-monorepo), or "org-map" (embedded org/infra knowledge).
     pub doc: docs::DocName,
 }
 
@@ -123,17 +124,37 @@ impl CanonicalMcp {
         }
     }
 
-    #[tool(
-        description = "Fetch canonical-monorepo operational docs as raw markdown. \
-                       doc = \"deploy\" (docs/deploy.md) or \"repo-boundaries\" \
-                       (docs/repo-boundaries.md)."
-    )]
+    #[tool(description = "Fetch canonical.cloud operational docs as markdown. \
+                       doc = \"deploy\" (canonical-monorepo docs/deploy.md, fetched live) or \
+                       \"repo-boundaries\" (canonical-monorepo docs/repo-boundaries.md, fetched \
+                       live) or \"org-map\" (embedded org/infra map: GitOps runtime, shared k8s \
+                       libs, dpm migrations, Squarespace/Cloudflare DNS, and fiducia.cloud; \
+                       never touches the network).")]
     async fn stack_docs(
         &self,
         Parameters(params): Parameters<StackDocsParams>,
     ) -> Result<CallToolResult, ErrorData> {
         match docs::fetch(&self.http, params.doc).await {
             Ok(markdown) => Ok(CallToolResult::success(vec![ContentBlock::text(markdown)])),
+            Err(error) => Ok(tool_error(error)),
+        }
+    }
+
+    #[tool(
+        description = "Read-only fiducia.cloud check: whether canonical.cloud's required \
+                       secrets are present and its distributed locks/leases look healthy. \
+                       fiducia.cloud is the org's shared secrets (synced with GitHub Actions \
+                       secrets) + locks/leases plane. Needs FIDUCIA_URL + FIDUCIA_TOKEN \
+                       (optional FIDUCIA_REQUIRED_SECRETS csv). Secret VALUES are never \
+                       fetched, only presence; the token is never printed."
+    )]
+    async fn fiducia_status(&self) -> Result<CallToolResult, ErrorData> {
+        let env = match fiducia::env() {
+            Ok(env) => env,
+            Err(error) => return Ok(tool_error(error)),
+        };
+        match fiducia::status_report(&self.http, &env).await {
+            Ok(report) => Ok(CallToolResult::success(vec![ContentBlock::text(report)])),
             Err(error) => Ok(tool_error(error)),
         }
     }
@@ -206,10 +227,12 @@ impl ServerHandler for CanonicalMcp {
                 "Operational tooling for the canonical.cloud stack (GitHub org canonical-cloud). \
                  Use stack_ci_status for CI health, submodule_pins to check monorepo pins, \
                  service_health to probe a deployment, stack_docs for deploy/repo-boundary \
-                 documentation, domain_status for registrar (RDAP) and DNS delegation state, \
-                 cloudflare_dns to list zone records (needs CLOUDFLARE_API_TOKEN), and \
-                 k8s_status for read-only cluster state via kubectl. Set GITHUB_TOKEN (or \
-                 GH_TOKEN) for higher GitHub rate limits.",
+                 documentation (fetched live) or org-map (embedded org/infra knowledge, \
+                 offline), domain_status for registrar (RDAP) and DNS delegation state, \
+                 cloudflare_dns to list zone records (needs CLOUDFLARE_API_TOKEN), \
+                 k8s_status for read-only cluster state via kubectl, and fiducia_status for \
+                 the shared secrets+locks/leases plane (needs FIDUCIA_URL + FIDUCIA_TOKEN). \
+                 Set GITHUB_TOKEN (or GH_TOKEN) for higher GitHub rate limits.",
             )
     }
 }
@@ -231,6 +254,7 @@ mod tests {
             vec![
                 "cloudflare_dns",
                 "domain_status",
+                "fiducia_status",
                 "k8s_status",
                 "service_health",
                 "stack_ci_status",
@@ -255,5 +279,6 @@ mod tests {
             text.contains("repo-boundaries"),
             "schema mentions repo-boundaries: {text}"
         );
+        assert!(text.contains("org-map"), "schema mentions org-map: {text}");
     }
 }
