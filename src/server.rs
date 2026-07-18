@@ -7,7 +7,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use crate::tools::{cloudflare, docs, domain, github, health, k8s};
+use crate::tools::{cloudflare, docs, domain, fiducia, github, health, k8s};
 
 pub struct CanonicalMcp {
     http: reqwest::Client,
