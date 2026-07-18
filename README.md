@@ -18,10 +18,11 @@ runtime and reqwest (rustls, no OpenSSL).
 | `stack_ci_status` | `repo` (optional) | Latest five GitHub Actions runs per stack repo: branch, status, conclusion, workflow, run URL, timestamp |
 | `submodule_pins` | — | Compare `canonical-monorepo`'s `apps/` submodule pins against each app repo's `main` HEAD: pinned SHA, HEAD SHA, current?, commits behind |
 | `service_health` | `base_url` | Probe `{base}/healthz`, `{base}/readyz`, `{base}/api/v1/health` with a short timeout; return status codes and truncated bodies |
-| `stack_docs` | `doc`: `deploy` \| `repo-boundaries` | Fetch `docs/deploy.md` or `docs/repo-boundaries.md` from `canonical-monorepo` as raw markdown |
+| `stack_docs` | `doc`: `deploy` \| `repo-boundaries` \| `org-map` | Fetch `docs/deploy.md` or `docs/repo-boundaries.md` from `canonical-monorepo` as raw markdown (live), or `org-map` — an embedded, offline org/infra knowledge doc (GitOps runtime, shared k8s libs, dpm migrations, Squarespace/Cloudflare DNS, fiducia.cloud) |
 | `domain_status` | `domain` (default `canonical.cloud`) | Registrar-side state via public RDAP (registrar, status codes, registration/expiration events, delegated nameservers — Squarespace exposes no public domains API, so RDAP is the registrar integration) plus live NS/A/AAAA via DNS-over-HTTPS and whether delegation points at Cloudflare |
 | `cloudflare_dns` | `domain` (default `canonical.cloud`) | List a Cloudflare zone's DNS records (type, name, content, proxied, TTL). Read-only; needs `CLOUDFLARE_API_TOKEN` |
 | `k8s_status` | `resource`: `nodes` \| `pods` \| `deployments` \| `services` \| `ingresses`; `namespace`, `context` (optional) | Read-only cluster state via allowlisted `kubectl get … -o json`, summarized to name/namespace/status/age rows. Never mutates the cluster |
+| `fiducia_status` | — | Read-only fiducia.cloud check: required-secret *presence* (never values) and lock/lease health. Needs `FIDUCIA_URL` + `FIDUCIA_TOKEN` (optional `FIDUCIA_REQUIRED_SECRETS` csv) |
 
 The stack repositories covered by `stack_ci_status`:
 `canonical-monorepo`, `canonical-web-server.rs`,

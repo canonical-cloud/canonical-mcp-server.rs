@@ -124,14 +124,12 @@ impl CanonicalMcp {
         }
     }
 
-    #[tool(
-        description = "Fetch canonical.cloud operational docs as markdown. \
+    #[tool(description = "Fetch canonical.cloud operational docs as markdown. \
                        doc = \"deploy\" (canonical-monorepo docs/deploy.md, fetched live) or \
                        \"repo-boundaries\" (canonical-monorepo docs/repo-boundaries.md, fetched \
                        live) or \"org-map\" (embedded org/infra map: GitOps runtime, shared k8s \
                        libs, dpm migrations, Squarespace/Cloudflare DNS, and fiducia.cloud; \
-                       never touches the network)."
-    )]
+                       never touches the network).")]
     async fn stack_docs(
         &self,
         Parameters(params): Parameters<StackDocsParams>,
