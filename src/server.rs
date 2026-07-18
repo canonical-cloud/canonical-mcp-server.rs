@@ -18,12 +18,13 @@ pub struct CanonicalMcp {
 impl CanonicalMcp {
     pub fn new() -> Result<Self, reqwest::Error> {
         let http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
             .user_agent(github::USER_AGENT)
             .build()?;
         Ok(Self {
             github: github::GitHubClient::new(http.clone()),
             http,
-            tool_router: Self::tool_router(),
+            tool_router: crate::telemetry::instrument_tool_router(Self::tool_router()),
         })
     }
 }

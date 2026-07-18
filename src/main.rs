@@ -4,13 +4,21 @@
 //! [`server`] and [`tools`].
 
 mod server;
+mod telemetry;
 mod tools;
 
 use rmcp::{transport::stdio, ServiceExt};
+use tracing::Instrument;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let service = server::CanonicalMcp::new()?.serve(stdio()).await?;
-    service.waiting().await?;
+    let _telemetry = telemetry::init("canonical-mcp-server", "canonical-cloud");
+    tracing::info!(transport = "stdio", "starting MCP server");
+    let server_span = tracing::info_span!("mcp.server", rpc.system = "mcp", transport = "stdio");
+    let service = server::CanonicalMcp::new()?
+        .serve(stdio())
+        .instrument(server_span.clone())
+        .await?;
+    service.waiting().instrument(server_span).await?;
     Ok(())
 }
