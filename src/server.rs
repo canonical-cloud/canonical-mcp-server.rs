@@ -125,9 +125,12 @@ impl CanonicalMcp {
     }
 
     #[tool(
-        description = "Fetch canonical-monorepo operational docs as raw markdown. \
-                       doc = \"deploy\" (docs/deploy.md) or \"repo-boundaries\" \
-                       (docs/repo-boundaries.md)."
+        description = "Fetch canonical.cloud operational docs as markdown. \
+                       doc = \"deploy\" (canonical-monorepo docs/deploy.md, fetched live) or \
+                       \"repo-boundaries\" (canonical-monorepo docs/repo-boundaries.md, fetched \
+                       live) or \"org-map\" (embedded org/infra map: GitOps runtime, shared k8s \
+                       libs, dpm migrations, Squarespace/Cloudflare DNS, and fiducia.cloud; \
+                       never touches the network)."
     )]
     async fn stack_docs(
         &self,
@@ -135,6 +138,25 @@ impl CanonicalMcp {
     ) -> Result<CallToolResult, ErrorData> {
         match docs::fetch(&self.http, params.doc).await {
             Ok(markdown) => Ok(CallToolResult::success(vec![ContentBlock::text(markdown)])),
+            Err(error) => Ok(tool_error(error)),
+        }
+    }
+
+    #[tool(
+        description = "Read-only fiducia.cloud check: whether canonical.cloud's required \
+                       secrets are present and its distributed locks/leases look healthy. \
+                       fiducia.cloud is the org's shared secrets (synced with GitHub Actions \
+                       secrets) + locks/leases plane. Needs FIDUCIA_URL + FIDUCIA_TOKEN \
+                       (optional FIDUCIA_REQUIRED_SECRETS csv). Secret VALUES are never \
+                       fetched, only presence; the token is never printed."
+    )]
+    async fn fiducia_status(&self) -> Result<CallToolResult, ErrorData> {
+        let env = match fiducia::env() {
+            Ok(env) => env,
+            Err(error) => return Ok(tool_error(error)),
+        };
+        match fiducia::status_report(&self.http, &env).await {
+            Ok(report) => Ok(CallToolResult::success(vec![ContentBlock::text(report)])),
             Err(error) => Ok(tool_error(error)),
         }
     }
