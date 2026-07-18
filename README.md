@@ -61,13 +61,17 @@ claude mcp add canonical-mcp -- \
 | `GITHUB_TOKEN` (or `GH_TOKEN`) | no | Bearer token for GitHub API calls. Unauthenticated works but is rate-limited to 60 requests/hour per IP. |
 | `CLOUDFLARE_API_TOKEN` | for `cloudflare_dns` | Read-only Cloudflare token (Zone.Zone:Read, Zone.DNS:Read). |
 | `KUBECONFIG` / kubeconfig | for `k8s_status` | `k8s_status` shells out to `kubectl` on `PATH` and uses your normal kubeconfig/contexts. |
+| `FIDUCIA_URL` + `FIDUCIA_TOKEN` | for `fiducia_status` | Base URL and read-scoped bearer token for fiducia.cloud. |
+| `FIDUCIA_REQUIRED_SECRETS` | no | Comma-separated secret names for `fiducia_status` to assert present (default: this stack's own credentials). |
 
 The server makes outbound HTTPS requests only — to `api.github.com`,
 `raw.githubusercontent.com`, `rdap.org` (and the registry RDAP endpoint it
-redirects to), `cloudflare-dns.com`, `api.cloudflare.com`, and whatever
-`base_url` you pass to `service_health`. Every tool is read-only by design;
-there are deliberately no write-capable Cloudflare, GitHub, or Kubernetes
-tools (matching the read-only MCP contract used across the org's ops repos).
+redirects to), `cloudflare-dns.com`, `api.cloudflare.com`, whatever `base_url`
+you pass to `service_health`, and whatever `FIDUCIA_URL` you configure. Every
+tool is read-only by design; there are deliberately no write-capable
+Cloudflare, GitHub, Kubernetes, or fiducia tools (matching the read-only MCP
+contract used across the org's ops repos). `fiducia_status` never fetches
+secret values, only presence, and never logs the fiducia token.
 
 ## Layout
 
