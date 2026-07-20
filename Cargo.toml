@@ -8,7 +8,7 @@ rust-version = "1.95"
 chrono = { version = "0.4.42", default-features = false, features = ["clock", "std"] }
 opentelemetry = "0.27"
 opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "metrics", "trace"] }
-opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
 rmcp = { version = "2.2.0", features = ["server", "transport-io"] }
 schemars = "1.2.1"
