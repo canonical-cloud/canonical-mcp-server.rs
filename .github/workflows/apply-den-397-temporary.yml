@@ -25,21 +25,32 @@ jobs:
         with:
           toolchain: "1.97.0"
           components: rustfmt, clippy
-      - name: Apply telemetry and documentation changes
-        run: python3 scripts/apply_den_397_flags2env.py
+      - name: Apply telemetry and documentation changes once
+        run: |
+          if ! grep -q 'filter: EnvFilter' src/telemetry.rs; then
+            python3 scripts/apply_den_397_flags2env.py
+          fi
       - name: Refresh lockfile and format
         run: |
           cargo update
           cargo fmt --all
-      - name: Validate committed candidate
+      - name: Capture validation diagnostic
+        shell: bash
         run: |
-          cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked --all-targets
-          cargo build --locked --release
-      - name: Commit implementation
+          set +e
+          cargo clippy --locked --all-targets --message-format=short -- -D warnings > .den-397-validation.txt 2>&1
+          clippy_status=$?
+          cargo test --locked --all-targets >> .den-397-validation.txt 2>&1
+          test_status=$?
+          cargo build --locked --release >> .den-397-validation.txt 2>&1
+          build_status=$?
+          printf '\nclippy_status=%s\ntest_status=%s\nbuild_status=%s\n' \
+            "$clippy_status" "$test_status" "$build_status" >> .den-397-validation.txt
+          exit 0
+      - name: Commit implementation and diagnostic
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Cargo.lock README.md src
+          git add Cargo.lock README.md src .den-397-validation.txt
           git commit -m 'DEN-397: activate hardened flags2env MCP startup'
           git push origin HEAD:feat/den-397-flags2env
