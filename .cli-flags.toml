@@ -1,0 +1,19 @@
+# Only non-secret local process controls are exposed as flags. MCP stdout remains
+# reserved for protocol frames; logs and startup diagnostics use stderr.
+
+[help]
+url = "https://github.com/canonical-cloud/canonical-mcp-server.rs#environment"
+columns = ["options", "env", "type", "default", "description"]
+
+[parse]
+allow_unknown = false
+
+[env]
+ignore = ["GITHUB_TOKEN", "GH_TOKEN", "CLOUDFLARE_API_TOKEN", "KUBECONFIG", "FIDUCIA_URL", "FIDUCIA_TOKEN", "FIDUCIA_REQUIRED_SECRETS", "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS", "OTEL_RESOURCE_ATTRIBUTES", "DEPLOYMENT_ENV", "POD_NAMESPACE", "POD_NAME", "NODE_NAME", "HOSTNAME"]
+
+[flags.log-filter]
+env = "RUST_LOG"
+aliases = ["log-filter"]
+type = "string"
+default = "info,hyper=warn"
+help = "Tracing filter for structured stderr logs."
