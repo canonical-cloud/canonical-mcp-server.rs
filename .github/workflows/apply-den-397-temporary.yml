@@ -26,8 +26,9 @@ jobs:
           toolchain: "1.97.0"
           components: rustfmt, clippy
       - name: Apply telemetry and documentation changes once
+        shell: bash
         run: |
-          if ! grep -q 'filter: EnvFilter' src/telemetry.rs; then
+          if grep -Fq "pub fn init(service_name: &'static str, service_namespace: &'static str)" src/telemetry.rs; then
             python3 scripts/apply_den_397_flags2env.py
           fi
       - name: Refresh lockfile and format
