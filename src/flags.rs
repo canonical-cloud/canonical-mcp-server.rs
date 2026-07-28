@@ -1,6 +1,10 @@
 //! Strict, stdio-safe flags2env startup configuration.
 
-use std::{error::Error, io, path::{Path, PathBuf}};
+use std::{
+    error::Error,
+    io,
+    path::{Path, PathBuf},
+};
 
 use flags2env::BundledFlags2Env;
 use tracing_subscriber::EnvFilter;
@@ -11,17 +15,14 @@ fn invalid_input(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message.into())
 }
 
-pub fn parse_cli_flags(
-    argv: &[String],
-    config_path: &Path,
-) -> Result<EnvFilter, Box<dyn Error>> {
+pub fn parse_cli_flags(argv: &[String], config_path: &Path) -> Result<EnvFilter, Box<dyn Error>> {
     let config_path = config_path
         .to_str()
         .ok_or_else(|| invalid_input(".cli-flags.toml path is not valid UTF-8"))?;
     let parser = BundledFlags2Env::new();
-    parser
-        .audit_config(Some(config_path))
-        .map_err(|error| invalid_input(format!("flags-2-env configuration audit failed: {error}")))?;
+    parser.audit_config(Some(config_path)).map_err(|error| {
+        invalid_input(format!("flags-2-env configuration audit failed: {error}"))
+    })?;
     let parsed = parser
         .parse_structured(argv, Some(config_path))
         .map_err(|error| invalid_input(format!("flags-2-env parse failed: {error}")))?;
@@ -59,15 +60,15 @@ pub fn parse_cli_flags(
 }
 
 pub fn resolve_config_path() -> Result<PathBuf, Box<dyn Error>> {
-    if let Some(path) = std::env::var_os("CANONICAL_FLAGS_CONFIG").filter(|value| !value.is_empty()) {
+    if let Some(path) = std::env::var_os("CANONICAL_FLAGS_CONFIG").filter(|value| !value.is_empty())
+    {
         let path = PathBuf::from(path);
         if path.is_file() {
             return Ok(path);
         }
-        return Err(invalid_input(
-            "CANONICAL_FLAGS_CONFIG does not point to a readable file",
-        )
-        .into());
+        return Err(
+            invalid_input("CANONICAL_FLAGS_CONFIG does not point to a readable file").into(),
+        );
     }
 
     let mut candidates = Vec::new();
@@ -85,10 +86,8 @@ pub fn resolve_config_path() -> Result<PathBuf, Box<dyn Error>> {
         .into_iter()
         .find(|candidate| candidate.is_file())
         .ok_or_else(|| {
-            invalid_input(
-                "cannot locate .cli-flags.toml; set CANONICAL_FLAGS_CONFIG to its path",
-            )
-            .into()
+            invalid_input("cannot locate .cli-flags.toml; set CANONICAL_FLAGS_CONFIG to its path")
+                .into()
         })
 }
 
