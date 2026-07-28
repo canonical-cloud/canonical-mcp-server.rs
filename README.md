@@ -32,7 +32,13 @@ The stack repositories covered by `stack_ci_status`:
 
 ```sh
 cargo run
+cargo run -- --log-filter=debug,hyper=warn
 ```
+
+The binary audits `.cli-flags.toml` before telemetry or MCP startup. Set
+`CANONICAL_FLAGS_CONFIG` when an installed binary cannot discover the contract
+from the current directory, executable directory, or `../share/canonical-mcp-server`.
+Only the non-secret log filter is accepted as a flag.
 
 The server speaks MCP over stdin/stdout; it is meant to be launched by an MCP
 client, not used interactively.

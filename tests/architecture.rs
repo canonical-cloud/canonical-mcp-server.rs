@@ -78,8 +78,9 @@ fn main_remains_a_thin_declarative_bootstrap() {
         .collect::<BTreeSet<_>>();
     assert_eq!(
         module_declarations,
-        BTreeSet::from(["server", "telemetry", "tools"])
+        BTreeSet::from(["flags", "server", "telemetry", "tools"])
     );
+    assert!(main.contains("flags::process_log_filter()?"));
     assert!(main.contains("telemetry::init("));
     assert!(main.contains("server::CanonicalMcp::new()?"));
     assert!(main.contains(".serve(stdio())"));

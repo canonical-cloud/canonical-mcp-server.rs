@@ -3,6 +3,7 @@
 //! Serves over stdio. `main` is bootstrap only; the tools live in
 //! [`server`] and [`tools`].
 
+mod flags;
 mod server;
 mod telemetry;
 mod tools;
@@ -12,7 +13,8 @@ use tracing::Instrument;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _telemetry = telemetry::init("canonical-mcp-server", "canonical-cloud");
+    let log_filter = flags::process_log_filter()?;
+    let _telemetry = telemetry::init("canonical-mcp-server", "canonical-cloud", log_filter);
     tracing::info!(transport = "stdio", "starting MCP server");
     let server_span = tracing::info_span!("mcp.server", rpc.system = "mcp", transport = "stdio");
     let service = server::CanonicalMcp::new()?
