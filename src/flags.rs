@@ -112,7 +112,7 @@ mod tests {
             "--log-filter=debug,hyper=warn".to_owned(),
         ];
         let filter = parse_cli_flags(&argv, &config_path()).expect("valid operational flag");
-        assert!(format!("{filter:?}").contains("debug"));
+        assert!(filter.to_string().contains("debug"));
     }
 
     #[test]
