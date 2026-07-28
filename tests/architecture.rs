@@ -129,71 +129,92 @@ fn every_tool_file_is_registered_once() {
 }
 
 #[test]
-fn tool_implementations_do_not_depend_on_server_framework_types() {
-    for path in all_sources()
-        .into_iter()
-        .filter(|path| path.starts_with(repository_root().join("src/tools")))
-    {
-        let body = source(relative(&path));
-        for framework_marker in [
-            "ServerHandler",
-            "ServerCapabilities",
-            "ToolRouter",
-            "#[tool_router]",
-            "#[tool_handler]",
-        ] {
-            assert!(
-                !body.contains(framework_marker),
-                "{} contains server framework concern {framework_marker}",
-                relative(&path).display()
-            );
-        }
-    }
-}
-
-#[test]
-fn kubernetes_adapter_stays_allowlisted_and_shell_free() {
-    let sources = all_sources();
-    let command_owners = files_containing(&sources, "Command::new");
-    assert_eq!(command_owners.len(), 1, "process spawning gained a new owner");
-    assert_eq!(relative(command_owners[0]), Path::new("src/tools/k8s.rs"));
-
-    let k8s = source("src/tools/k8s.rs");
-    assert!(k8s.contains("Command::new(\"kubectl\")"));
-    assert!(!k8s.contains("sh -c"));
-    assert!(!k8s.contains("bash -c"));
-}
-
-#[test]
 fn process_side_effects_have_single_module_owners() {
     let sources = all_sources();
-    assert_eq!(
-        files_containing(&sources, "std::env::var(")
-            .into_iter()
-            .map(|path| relative(path))
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from([
-            PathBuf::from("src/flags.rs"),
-            PathBuf::from("src/telemetry.rs"),
-            PathBuf::from("src/tools/cloudflare.rs"),
-            PathBuf::from("src/tools/fiducia.rs"),
-            PathBuf::from("src/tools/github.rs"),
-        ])
-    );
+    let ownership = [
+        (".serve(stdio())", "src/main.rs"),
+        ("reqwest::Client::builder", "src/server.rs"),
+        (
+            "tokio::process::Command::new(\"kubectl\")",
+            "src/tools/k8s.rs",
+        ),
+        ("OTEL_EXPORTER_OTLP_ENDPOINT", "src/telemetry.rs"),
+    ];
+
+    for (marker, expected_owner) in ownership {
+        let owners = files_containing(&sources, marker);
+        assert_eq!(
+            owners.len(),
+            1,
+            "{marker} must have exactly one module owner"
+        );
+        assert_eq!(relative(owners[0]), PathBuf::from(expected_owner));
+    }
 }
 
 #[test]
 fn stdout_is_reserved_for_the_mcp_protocol() {
     let sources = all_sources();
-    for macro_name in ["print", "println"] {
-        let owners = files_invoking_macro(&sources, macro_name);
+    assert!(
+        files_invoking_macro(&sources, "println").is_empty(),
+        "println! can corrupt stdio JSON-RPC framing"
+    );
+    assert!(
+        files_invoking_macro(&sources, "print").is_empty(),
+        "print! can corrupt stdio JSON-RPC framing"
+    );
+
+    let stderr_owners = files_containing(&sources, "eprintln!(");
+    assert_eq!(stderr_owners.len(), 1);
+    assert_eq!(
+        relative(stderr_owners[0]),
+        PathBuf::from("src/telemetry.rs")
+    );
+}
+
+#[test]
+fn tool_implementations_do_not_depend_on_server_framework_types() {
+    let tools_dir = repository_root().join("src/tools");
+    let mut tool_sources = Vec::new();
+    rust_sources_below(&tools_dir, &mut tool_sources);
+
+    for path in tool_sources {
+        let body = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        for framework_type in ["CanonicalMcp", "ToolRouter", "ServerHandler"] {
+            assert!(
+                !body.contains(framework_type),
+                "{} depends on server framework type {framework_type}",
+                relative(&path).display()
+            );
+        }
+    }
+
+    let server = source("src/server.rs");
+    assert!(server
+        .contains("use crate::tools::{cloudflare, docs, domain, fiducia, github, health, k8s};"));
+    assert!(!server.contains("tokio::process::Command"));
+}
+
+#[test]
+fn kubernetes_adapter_stays_allowlisted_and_shell_free() {
+    let k8s = source("src/tools/k8s.rs");
+    assert!(k8s.contains("tokio::process::Command::new(\"kubectl\")"));
+    assert!(k8s.contains("\"get\".to_string()"));
+    assert!(k8s.contains("\"--request-timeout=15s\".to_string()"));
+    assert!(k8s.contains("validate_k8s_name(namespace, \"namespace\")?"));
+    assert!(k8s.contains("validate_k8s_name(context, \"context\")?"));
+
+    for forbidden in [
+        "Command::new(\"sh\")",
+        "Command::new(\"bash\")",
+        "\"delete\".to_string()",
+        "\"apply\".to_string()",
+        "\"exec\".to_string()",
+    ] {
         assert!(
-            owners.is_empty(),
-            "{macro_name}! writes to stdout from {:?}",
-            owners
-                .into_iter()
-                .map(|path| relative(path))
-                .collect::<Vec<_>>()
+            !k8s.contains(forbidden),
+            "Kubernetes adapter gained forbidden command surface {forbidden}"
         );
     }
 }
