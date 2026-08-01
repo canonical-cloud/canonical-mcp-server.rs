@@ -202,7 +202,7 @@ impl CanonicalMcp {
         Parameters(params): Parameters<CloudflareDnsParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let domain = params.domain.as_deref().unwrap_or(domain::DEFAULT_DOMAIN);
-        match cloudflare::dns_records_report(&self.http, domain).await {
+        match cloudflare::dns_records_report(&self.api_http, domain).await {
             Ok(report) => json_result(&report),
             Err(error) => Ok(tool_error(error)),
         }
