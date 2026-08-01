@@ -10,7 +10,15 @@ use serde::Deserialize;
 use crate::tools::{cloudflare, docs, domain, fiducia, github, health, k8s};
 
 pub struct CanonicalMcp {
+    /// Redirect-following client for token-less endpoints: RDAP (rdap.org
+    /// intentionally redirects to the authoritative server), DNS-over-HTTPS,
+    /// operator-supplied health URLs, and raw doc fetches.
     http: reqwest::Client,
+    /// No-redirect client for every request that carries a bearer token
+    /// (GitHub, Cloudflare, fiducia). These APIs never legitimately redirect,
+    /// and refusing to follow one prevents a hijacked or open redirect from
+    /// replaying the `Authorization` header to an attacker-chosen host.
+    api_http: reqwest::Client,
     github: github::GitHubClient,
     tool_router: ToolRouter<Self>,
 }
@@ -21,9 +29,15 @@ impl CanonicalMcp {
             .timeout(std::time::Duration::from_secs(20))
             .user_agent(github::USER_AGENT)
             .build()?;
+        let api_http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .user_agent(github::USER_AGENT)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
         Ok(Self {
-            github: github::GitHubClient::new(http.clone()),
+            github: github::GitHubClient::new(api_http.clone()),
             http,
+            api_http,
             tool_router: crate::telemetry::instrument_tool_router(Self::tool_router()),
         })
     }
