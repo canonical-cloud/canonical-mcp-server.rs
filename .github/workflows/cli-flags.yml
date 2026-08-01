@@ -1,0 +1,51 @@
+name: CLI flags contract
+
+on:
+  pull_request:
+    paths:
+      - ".cli-flags.toml"
+      - ".github/workflows/cli-flags.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/flags.rs"
+      - "src/main.rs"
+      - "src/telemetry.rs"
+  push:
+    branches: [main]
+    paths:
+      - ".cli-flags.toml"
+      - ".github/workflows/cli-flags.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/flags.rs"
+      - "src/main.rs"
+      - "src/telemetry.rs"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: consumer
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ORESoftware/flags-2-env
+          ref: 377bff1a4e7424eb98377997a232ddc0fc700f59
+          path: flags2env
+          persist-credentials: false
+      - name: Build exact audit CLI
+        run: make -C flags2env cli
+      - name: Audit strict contract
+        run: flags2env/build/flags2env audit consumer/.cli-flags.toml
+      - name: Verify immutable Rust pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'rev = "377bff1a4e7424eb98377997a232ddc0fc700f59"' consumer/Cargo.toml
+          grep -F '377bff1a4e7424eb98377997a232ddc0fc700f59' consumer/Cargo.lock

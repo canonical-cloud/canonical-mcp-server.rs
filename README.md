@@ -32,7 +32,13 @@ The stack repositories covered by `stack_ci_status`:
 
 ```sh
 cargo run
+cargo run -- --log-filter=debug,hyper=warn
 ```
+
+The binary audits `.cli-flags.toml` before telemetry or MCP startup. Set
+`CANONICAL_FLAGS_CONFIG` when an installed binary cannot discover the contract
+from the current directory, executable directory, or `../share/canonical-mcp-server`.
+Only the non-secret log filter is accepted as a flag.
 
 The server speaks MCP over stdin/stdout; it is meant to be launched by an MCP
 client, not used interactively.
@@ -103,3 +109,11 @@ cargo test --all-targets
 
 The Nix dev shell mirrors the sibling repos: `./shell` drops you into it
 (requires Nix with flakes).
+
+## OpenTelemetry
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export explicit OTLP/gRPC traces and
+metrics; use `RUST_LOG` for filtering. Each MCP tool call gets a named span,
+call counter, duration histogram, and error flag. Arguments, results, and
+secrets are never recorded. JSON logs stay on stderr and stdout stays reserved
+for MCP framing. Instrumentation is explicit Rust code—no monkey patching.
