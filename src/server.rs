@@ -168,7 +168,7 @@ impl CanonicalMcp {
             Ok(env) => env,
             Err(error) => return Ok(tool_error(error)),
         };
-        match fiducia::status_report(&self.http, &env).await {
+        match fiducia::status_report(&self.api_http, &env).await {
             Ok(report) => Ok(CallToolResult::success(vec![ContentBlock::text(report)])),
             Err(error) => Ok(tool_error(error)),
         }
