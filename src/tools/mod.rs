@@ -95,4 +95,42 @@ mod tests {
         let error = Outer(std::io::Error::other("inner cause"));
         assert_eq!(error_chain(&error), "outer failed: inner cause");
     }
+
+    #[test]
+    fn cap_take_appends_whole_chunk_below_cap() {
+        // Room to spare: take the whole chunk, keep reading.
+        assert_eq!(cap_take(0, 100, 1024), (100, false));
+        assert_eq!(cap_take(500, 100, 1024), (100, false));
+    }
+
+    #[test]
+    fn cap_take_stops_exactly_at_cap() {
+        // Chunk that lands exactly on the cap is fully taken, then stop.
+        assert_eq!(cap_take(1000, 24, 1024), (24, true));
+    }
+
+    #[test]
+    fn cap_take_truncates_overflowing_chunk() {
+        // Only the bytes up to the cap are taken; the index is in range.
+        assert_eq!(cap_take(1000, 500, 1024), (24, true));
+        assert_eq!(cap_take(0, 5000, 1024), (1024, true));
+    }
+
+    #[test]
+    fn cap_take_saturates_when_already_full() {
+        // Never underflows or asks for a negative/oversized slice.
+        assert_eq!(cap_take(1024, 100, 1024), (0, true));
+        assert_eq!(cap_take(2048, 100, 1024), (0, true));
+    }
+
+    #[test]
+    fn cap_take_take_never_exceeds_chunk_len() {
+        // Invariant relied on by `read_body_capped`'s `&chunk[..take]`.
+        for buffered in [0usize, 10, 1000, 1024, 5000] {
+            for chunk_len in [0usize, 1, 24, 500, 5000] {
+                let (take, _) = cap_take(buffered, chunk_len, 1024);
+                assert!(take <= chunk_len, "take {take} > chunk_len {chunk_len}");
+            }
+        }
+    }
 }
