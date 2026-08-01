@@ -71,7 +71,12 @@ async fn get(
         .await
         .map_err(|error| format!("GET {path} failed: {}", error_chain(&error)))?;
     let status = response.status();
-    let body: Value = response.json().await.unwrap_or(Value::Null);
+    // Bounded read; a missing/oversized/non-JSON body degrades to Null
+    // rather than propagating, matching the tool's tolerant reporting.
+    let body: Value = match super::read_body_capped(response, super::MAX_RESPONSE_BYTES).await {
+        Ok(text) => serde_json::from_str(&text).unwrap_or(Value::Null),
+        Err(_) => Value::Null,
+    };
     Ok((status, body))
 }
 
