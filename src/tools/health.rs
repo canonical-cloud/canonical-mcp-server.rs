@@ -60,7 +60,7 @@ pub async fn probe(
         let report = match outcome {
             Ok(response) => {
                 let status = response.status().as_u16();
-                match response.text().await {
+                match super::read_body_capped(response, super::MAX_RESPONSE_BYTES).await {
                     Ok(body) => EndpointReport {
                         url,
                         status: Some(status),
@@ -71,10 +71,7 @@ pub async fn probe(
                         url,
                         status: Some(status),
                         body: None,
-                        error: Some(format!(
-                            "error reading body: {}",
-                            super::error_chain(&error)
-                        )),
+                        error: Some(error),
                     },
                 }
             }
