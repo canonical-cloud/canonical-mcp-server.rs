@@ -208,12 +208,8 @@ mod tests {
 
     #[test]
     fn successful_fiducia_responses_must_be_valid_json() {
-        let error = parse_response_body(
-            "/v1/secrets",
-            reqwest::StatusCode::OK,
-            "not-json",
-        )
-        .expect_err("successful invalid JSON must fail closed");
+        let error = parse_response_body("/v1/secrets", reqwest::StatusCode::OK, "not-json")
+            .expect_err("successful invalid JSON must fail closed");
         assert!(error.contains("/v1/secrets"));
         assert!(error.contains("invalid JSON"));
     }
