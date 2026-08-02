@@ -57,6 +57,27 @@ fn missing_env() -> String {
         .to_string()
 }
 
+fn parse_response_body(
+    path: &str,
+    status: reqwest::StatusCode,
+    text: &str,
+) -> Result<Value, String> {
+    if text.trim().is_empty() {
+        return Ok(Value::Null);
+    }
+
+    match serde_json::from_str(text) {
+        Ok(body) => Ok(body),
+        // An error response may legitimately be plain text. Preserve its HTTP
+        // status for the report without treating the text as trusted JSON.
+        Err(_) if !status.is_success() => Ok(Value::Null),
+        // A successful endpoint is used to decide whether secrets and leases
+        // exist. Invalid JSON must not be converted into an empty inventory,
+        // which could manufacture false MISSING or healthy-looking results.
+        Err(error) => Err(format!("GET {path}: invalid JSON: {error}")),
+    }
+}
+
 async fn get(
     client: &reqwest::Client,
     env: &FiduciaEnv,
@@ -71,12 +92,10 @@ async fn get(
         .await
         .map_err(|error| format!("GET {path} failed: {}", error_chain(&error)))?;
     let status = response.status();
-    // Bounded read; a missing/oversized/non-JSON body degrades to Null
-    // rather than propagating, matching the tool's tolerant reporting.
-    let body: Value = match super::read_body_capped(response, super::MAX_RESPONSE_BYTES).await {
-        Ok(text) => serde_json::from_str(&text).unwrap_or(Value::Null),
-        Err(_) => Value::Null,
-    };
+    let text = super::read_body_capped(response, super::MAX_RESPONSE_BYTES)
+        .await
+        .map_err(|error| format!("GET {path}: {error}"))?;
+    let body = parse_response_body(path, status, &text)?;
     Ok((status, body))
 }
 
@@ -185,6 +204,36 @@ mod tests {
         assert!(message.contains("FIDUCIA_URL"));
         assert!(message.contains("FIDUCIA_TOKEN"));
         assert!(message.contains("never logged"));
+    }
+
+    #[test]
+    fn successful_fiducia_responses_must_be_valid_json() {
+        let error = parse_response_body(
+            "/v1/secrets",
+            reqwest::StatusCode::OK,
+            "not-json",
+        )
+        .expect_err("successful invalid JSON must fail closed");
+        assert!(error.contains("/v1/secrets"));
+        assert!(error.contains("invalid JSON"));
+    }
+
+    #[test]
+    fn empty_or_non_success_bodies_preserve_tolerant_status_reporting() {
+        assert_eq!(
+            parse_response_body("/health", reqwest::StatusCode::OK, "")
+                .expect("empty body is allowed"),
+            Value::Null
+        );
+        assert_eq!(
+            parse_response_body(
+                "/v1/secrets",
+                reqwest::StatusCode::UNAUTHORIZED,
+                "plain text denial",
+            )
+            .expect("non-success plain text is represented by its status"),
+            Value::Null
+        );
     }
 
     #[test]
