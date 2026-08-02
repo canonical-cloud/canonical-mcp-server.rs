@@ -151,10 +151,10 @@ async fn get_json(client: &reqwest::Client, url: &str, accept: &str) -> Result<V
     if !status.is_success() {
         return Err(format!("GET {url} returned {status}"));
     }
-    response
-        .json()
+    let text = super::read_body_capped(response, super::MAX_RESPONSE_BYTES)
         .await
-        .map_err(|error| format!("GET {url}: invalid JSON: {}", error_chain(&error)))
+        .map_err(|error| format!("GET {url}: {error}"))?;
+    serde_json::from_str(&text).map_err(|error| format!("GET {url}: invalid JSON: {error}"))
 }
 
 async fn doh_query(client: &reqwest::Client, domain: &str, kind: &str) -> Result<Value, String> {
