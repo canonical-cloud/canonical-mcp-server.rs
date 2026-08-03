@@ -365,9 +365,9 @@ mod tests {
 
     #[test]
     fn protocol_progress_is_not_reported_as_an_application_error() {
-        let progress: Result<CallToolResponse, ErrorData> = Ok(
-            CallToolResponse::InputRequired(InputRequiredResult::from_request_state("opaque-state")),
-        );
+        let progress: Result<CallToolResponse, ErrorData> = Ok(CallToolResponse::InputRequired(
+            InputRequiredResult::from_request_state("opaque-state"),
+        ));
 
         assert!(!tool_call_is_error(&progress));
     }
