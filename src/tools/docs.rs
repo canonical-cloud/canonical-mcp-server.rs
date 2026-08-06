@@ -143,12 +143,9 @@ pub async fn fetch(client: &reqwest::Client, doc: DocName) -> Result<String, Str
         .await
         .map_err(|error| format!("GET {url} failed: {}", super::error_chain(&error)))?;
     let status = response.status();
-    let body = response.text().await.map_err(|error| {
-        format!(
-            "GET {url}: error reading body: {}",
-            super::error_chain(&error)
-        )
-    })?;
+    let body = super::read_body_capped(response, super::MAX_RESPONSE_BYTES)
+        .await
+        .map_err(|error| format!("GET {url}: {error}"))?;
     if !status.is_success() {
         return Err(format!("GET {url} returned {status}"));
     }
