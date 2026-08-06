@@ -62,12 +62,9 @@ impl GitHubClient {
             .await
             .map_err(|error| format!("GET {url} failed: {}", super::error_chain(&error)))?;
         let status = response.status();
-        let body = response.text().await.map_err(|error| {
-            format!(
-                "GET {url}: error reading body: {}",
-                super::error_chain(&error)
-            )
-        })?;
+        let body = super::read_body_capped(response, super::MAX_RESPONSE_BYTES)
+            .await
+            .map_err(|error| format!("GET {url}: {error}"))?;
         if !status.is_success() {
             let snippet: String = body.chars().take(300).collect();
             return Err(format!("GET {url} returned {status}: {snippet}"));

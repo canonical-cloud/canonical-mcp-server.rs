@@ -14,7 +14,9 @@ use opentelemetry_sdk::{
     trace::{SdkTracerProvider, Tracer},
     Resource,
 };
-use rmcp::{handler::server::tool::ToolRouter, service::MaybeSend};
+use rmcp::{
+    handler::server::tool::ToolRouter, model::CallToolResponse, service::MaybeSend, ErrorData,
+};
 use tracing::{field, Instrument};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -243,6 +245,21 @@ fn sensitive_attribute_key(key: &str) -> bool {
     .any(|needle| normalized.contains(needle))
 }
 
+/// Preserve the application-level error contract across RMCP response forms.
+///
+/// RMCP 3 wraps completed tool results in [`CallToolResponse::Complete`] and
+/// also permits protocol-progress responses for multi-round-trip requests and
+/// task materialization. Those progress responses are not application errors;
+/// only a handler failure or a completed result explicitly marked `is_error`
+/// should set the low-cardinality error metric and span status.
+fn tool_call_is_error(result: &Result<CallToolResponse, ErrorData>) -> bool {
+    match result {
+        Err(_) => true,
+        Ok(CallToolResponse::Complete(output)) => output.is_error.unwrap_or(false),
+        Ok(_) => false,
+    }
+}
+
 /// Add one explicit span and two low-cardinality metrics around every tool.
 /// Tool arguments and result bodies are deliberately never recorded.
 pub fn instrument_tool_router<S>(mut router: ToolRouter<S>) -> ToolRouter<S>
@@ -283,9 +300,7 @@ where
                 );
                 async move {
                     let result = (original)(context).await;
-                    let is_error = result
-                        .as_ref()
-                        .map_or(true, |output| output.is_error.unwrap_or(false));
+                    let is_error = tool_call_is_error(&result);
                     let elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0;
                     let attributes = [
                         KeyValue::new("mcp.tool.name", tool_name.to_string()),
@@ -308,6 +323,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use rmcp::model::{CallToolResult, InputRequiredResult};
+
     use super::*;
 
     #[test]
@@ -333,5 +350,33 @@ mod tests {
             resource_attribute_pairs(&raw).collect::<Vec<_>>(),
             vec![("good".to_string(), "value".to_string())]
         );
+    }
+
+    #[test]
+    fn completed_tool_results_preserve_the_explicit_error_bit() {
+        let success: Result<CallToolResponse, ErrorData> =
+            Ok(CallToolResult::success(Vec::new()).into());
+        let failure: Result<CallToolResponse, ErrorData> =
+            Ok(CallToolResult::error(Vec::new()).into());
+
+        assert!(!tool_call_is_error(&success));
+        assert!(tool_call_is_error(&failure));
+    }
+
+    #[test]
+    fn protocol_progress_is_not_reported_as_an_application_error() {
+        let progress: Result<CallToolResponse, ErrorData> = Ok(CallToolResponse::InputRequired(
+            InputRequiredResult::from_request_state("opaque-state"),
+        ));
+
+        assert!(!tool_call_is_error(&progress));
+    }
+
+    #[test]
+    fn handler_failures_are_reported_as_application_errors() {
+        let failure: Result<CallToolResponse, ErrorData> =
+            Err(ErrorData::internal_error("redacted", None));
+
+        assert!(tool_call_is_error(&failure));
     }
 }

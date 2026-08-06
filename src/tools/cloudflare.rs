@@ -88,10 +88,11 @@ async fn get_json(client: &reqwest::Client, token: &str, path: &str) -> Result<V
         .await
         .map_err(|error| format!("GET {url} failed: {}", error_chain(&error)))?;
     let status = response.status();
-    let body: Value = response
-        .json()
+    let text = super::read_body_capped(response, super::MAX_RESPONSE_BYTES)
         .await
-        .map_err(|error| format!("GET {url}: invalid JSON: {}", error_chain(&error)))?;
+        .map_err(|error| format!("GET {url}: {error}"))?;
+    let body: Value =
+        serde_json::from_str(&text).map_err(|error| format!("GET {url}: invalid JSON: {error}"))?;
     if !status.is_success() {
         return Err(format!(
             "GET {url} returned {status}: {:?}",

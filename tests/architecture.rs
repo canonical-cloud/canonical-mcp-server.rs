@@ -197,6 +197,61 @@ fn tool_implementations_do_not_depend_on_server_framework_types() {
 }
 
 #[test]
+fn bearer_token_requests_use_a_no_redirect_client() {
+    let server = source("src/server.rs");
+    // Token-bearing clients must refuse redirects: an open/hijacked redirect
+    // would otherwise replay the `Authorization` header to another host.
+    assert!(
+        server.contains("reqwest::redirect::Policy::none()"),
+        "server must build a no-redirect client for bearer-token requests"
+    );
+    // The three tools that send a bearer token use the no-redirect client.
+    assert!(
+        server.contains("github::GitHubClient::new(api_http"),
+        "GitHub client must use the no-redirect client"
+    );
+    assert!(
+        server.contains("cloudflare::dns_records_report(&self.api_http"),
+        "Cloudflare listing must use the no-redirect client"
+    );
+    assert!(
+        server.contains("fiducia::status_report(&self.api_http"),
+        "fiducia status must use the no-redirect client"
+    );
+    // RDAP intentionally relies on rdap.org redirects and carries no token, so
+    // it must keep using the redirect-following client.
+    assert!(
+        server.contains("domain::domain_status_report(&self.http"),
+        "RDAP/DNS reporting must keep the redirect-following client"
+    );
+}
+
+#[test]
+fn upstream_response_bodies_are_size_bounded() {
+    // No tool may buffer an unbounded upstream body: reads go through the
+    // capped reader, never the raw `.text()`/`.json()` body sinks. A per-
+    // request timeout bounds time but not memory.
+    let tools_dir = repository_root().join("src/tools");
+    let mut tool_sources = Vec::new();
+    rust_sources_below(&tools_dir, &mut tool_sources);
+    for path in tool_sources {
+        let body = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        for sink in [".text().await", ".json().await"] {
+            assert!(
+                !body.contains(sink),
+                "{} reads a body via {sink}; use read_body_capped instead",
+                relative(&path).display()
+            );
+        }
+    }
+    assert!(
+        source("src/tools/mod.rs").contains("pub async fn read_body_capped"),
+        "the shared capped-body reader must exist"
+    );
+}
+
+#[test]
 fn kubernetes_adapter_stays_allowlisted_and_shell_free() {
     let k8s = source("src/tools/k8s.rs");
     assert!(k8s.contains("tokio::process::Command::new(\"kubectl\")"));

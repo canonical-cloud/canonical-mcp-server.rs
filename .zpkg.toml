@@ -1,0 +1,35 @@
+[package]
+org = "canonical-cloud"
+name = "canonical-mcp-server"
+version = "0.1.0"
+description = "Private stdio MCP server for Canonical Cloud diagnostics and tooling"
+license = "UNLICENSED"
+keywords = ["mcp", "stdio", "compliance", "agents", "global-tool"]
+language = "rust"
+
+[package.repository]
+vcs = "git"
+url = "https://github.com/canonical-cloud/canonical-mcp-server.rs"
+
+[dependencies]
+"canonical-cloud/canonical-clients" = "^0.1.0"
+"canonical-cloud/canonical-lib" = "^0.1.0"
+
+[build]
+command = "cargo build --release --locked --bin canonical-mcp-server"
+outputs = ["target/release/canonical-mcp-server"]
+
+[bin]
+canonical-mcp-server = "target/release/canonical-mcp-server"
+
+[publish]
+include_readme = true
+tag_format = "v{version}"
+smoke_test = "cargo test --manifest-path \"$ZED_PKG_TEST_TARGET/Cargo.toml\" --all-targets --locked && test -x \"$ZED_PKG_TEST_TARGET/target/release/canonical-mcp-server\""
+exclude = [".env", ".env.*", ".direnv/**", ".zed/**", ".zed-pack/**", "target/**", "tmp/**", "**/*.log", ".DS_Store"]
+
+[install]
+adapter = "none"
+
+[scripts]
+test = "cargo test --all-targets --locked"
