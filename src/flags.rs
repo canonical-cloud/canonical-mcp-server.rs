@@ -81,12 +81,12 @@ pub fn log_filter(env: &EnvMap) -> Result<EnvFilter, Box<dyn Error>> {
         .get(RUST_LOG)
         .map(String::as_str)
         .unwrap_or(DEFAULT_LOG_FILTER);
-    EnvFilter::try_new(filter)
-        .map_err(|error| invalid_input(format!("invalid --log-filter value: {error}")))
-        .map_err(Into::into)
+    Ok(EnvFilter::try_new(filter)
+        .map_err(|error| invalid_input(format!("invalid --log-filter value: {error}")))?)
 }
 
-/// Compatibility helper for deterministic parser tests and existing callers.
+/// Compatibility helper used only by deterministic parser tests.
+#[cfg(test)]
 pub fn parse_cli_flags(argv: &[String], config_path: &Path) -> Result<EnvFilter, Box<dyn Error>> {
     let overrides = parse_cli_overrides(argv, config_path)?;
     log_filter(&get_env_map(EnvMap::new(), overrides))
@@ -129,10 +129,6 @@ pub fn process_env_map() -> Result<EnvMap, Box<dyn Error>> {
     let argv = process_argv();
     let overrides = parse_cli_overrides(&argv, &config_path)?;
     Ok(get_env_map(capture_process_env(), overrides))
-}
-
-pub fn process_log_filter() -> Result<EnvFilter, Box<dyn Error>> {
-    log_filter(&process_env_map()?)
 }
 
 #[cfg(test)]
