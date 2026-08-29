@@ -71,19 +71,21 @@ pub fn resolve_config_path() -> Result<PathBuf, Box<dyn Error>> {
         );
     }
 
-    let mut candidates = Vec::new();
-    if let Ok(current) = std::env::current_dir() {
-        candidates.push(current.join(".cli-flags.toml"));
-    }
-    if let Ok(executable) = std::env::current_exe() {
-        if let Some(parent) = executable.parent() {
-            candidates.push(parent.join(".cli-flags.toml"));
-            candidates.push(parent.join("../share/canonical-mcp-server/.cli-flags.toml"));
-        }
-    }
-
-    candidates
+    let from_cwd = std::env::current_dir()
+        .ok()
+        .map(|current| current.join(".cli-flags.toml"));
+    let from_exe = std::env::current_exe()
+        .ok()
+        .and_then(|executable| executable.parent().map(Path::to_path_buf))
+        .map(|parent| {
+            [
+                parent.join(".cli-flags.toml"),
+                parent.join("../share/canonical-mcp-server/.cli-flags.toml"),
+            ]
+        });
+    from_cwd
         .into_iter()
+        .chain(from_exe.into_iter().flatten())
         .find(|candidate| candidate.is_file())
         .ok_or_else(|| {
             invalid_input("cannot locate .cli-flags.toml; set CANONICAL_FLAGS_CONFIG to its path")
