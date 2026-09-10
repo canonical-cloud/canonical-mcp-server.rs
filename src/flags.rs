@@ -12,9 +12,7 @@ use std::{
 use flags2env::BundledFlags2Env;
 use tracing_subscriber::EnvFilter;
 
-use crate::env_map::{
-    EnvMap, get_env_map, process_argv, process_env_map as capture_process_env,
-};
+use crate::env_map::{get_env_map, process_argv, process_env_map as capture_process_env, EnvMap};
 
 const RUST_LOG: &str = "RUST_LOG";
 const DEFAULT_LOG_FILTER: &str = "info,hyper=warn";
@@ -25,10 +23,7 @@ fn invalid_input(message: impl Into<String>) -> io::Error {
 }
 
 /// Parse CLI arguments into an immutable environment override value.
-pub fn parse_cli_overrides(
-    argv: &[String],
-    config_path: &Path,
-) -> Result<EnvMap, Box<dyn Error>> {
+pub fn parse_cli_overrides(argv: &[String], config_path: &Path) -> Result<EnvMap, Box<dyn Error>> {
     let config_path = config_path
         .to_str()
         .ok_or_else(|| invalid_input(".cli-flags.toml path is not valid UTF-8"))?;
@@ -63,10 +58,9 @@ pub fn parse_cli_overrides(
     }
     for (key, value) in &parsed.flags {
         if key != RUST_LOG {
-            return Err(invalid_input(format!(
-                "unsupported CLI environment override: {key}"
-            ))
-            .into());
+            return Err(
+                invalid_input(format!("unsupported CLI environment override: {key}")).into(),
+            );
         }
         if value.len() > MAX_LOG_FILTER_BYTES || value.chars().any(char::is_control) {
             return Err(invalid_input("CLI log filter is invalid or too large").into());
