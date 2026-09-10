@@ -59,12 +59,13 @@ impl Drop for TelemetryGuard {
 pub fn init(
     service_name: &'static str,
     service_namespace: &'static str,
-    filter: EnvFilter,
+    env: &crate::env_map::EnvMap,
 ) -> TelemetryGuard {
-    let resource = resource(service_name, service_namespace);
-    let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
+    let filter = crate::env_map::env_value(env, "RUST_LOG")
+        .and_then(|value| EnvFilter::try_new(value).ok())
+        .unwrap_or_else(|| EnvFilter::new("info,hyper=warn"));
+    let resource = resource(service_name, service_namespace, env);
+    let endpoint = crate::env_map::env_value(env, "OTEL_EXPORTER_OTLP_ENDPOINT").map(str::to_owned);
 
     let (tracer_provider, tracer) = endpoint
         .as_deref()
@@ -161,30 +162,39 @@ where
         .with_writer(std::io::stderr)
 }
 
-fn resource(service_name: &str, service_namespace: &str) -> Resource {
+fn resource(service_name: &str, service_namespace: &str, env: &crate::env_map::EnvMap) -> Resource {
     let mut attributes = vec![
         KeyValue::new("service.name", service_name.to_string()),
         KeyValue::new("service.namespace", service_namespace.to_string()),
         KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
     ];
-    push_env_attribute(&mut attributes, "DEPLOYMENT_ENV", "deployment.environment");
-    push_env_attribute(&mut attributes, "POD_NAMESPACE", "k8s.namespace.name");
-    push_env_attribute(&mut attributes, "POD_NAME", "k8s.pod.name");
-    push_env_attribute(&mut attributes, "NODE_NAME", "k8s.node.name");
-    push_env_attribute(&mut attributes, "HOSTNAME", "host.name");
+    push_env_attribute(
+        &mut attributes,
+        env,
+        "DEPLOYMENT_ENV",
+        "deployment.environment",
+    );
+    push_env_attribute(&mut attributes, env, "POD_NAMESPACE", "k8s.namespace.name");
+    push_env_attribute(&mut attributes, env, "POD_NAME", "k8s.pod.name");
+    push_env_attribute(&mut attributes, env, "NODE_NAME", "k8s.node.name");
+    push_env_attribute(&mut attributes, env, "HOSTNAME", "host.name");
 
-    if let Ok(raw) = std::env::var("OTEL_RESOURCE_ATTRIBUTES") {
+    if let Some(raw) = crate::env_map::env_value(env, "OTEL_RESOURCE_ATTRIBUTES") {
         attributes
-            .extend(resource_attribute_pairs(&raw).map(|(key, value)| KeyValue::new(key, value)));
+            .extend(resource_attribute_pairs(raw).map(|(key, value)| KeyValue::new(key, value)));
     }
     Resource::builder_empty()
         .with_attributes(attributes)
         .build()
 }
 
-fn push_env_attribute(attributes: &mut Vec<KeyValue>, env_name: &str, key: &'static str) {
-    if let Ok(value) = std::env::var(env_name) {
-        let value = value.trim();
+fn push_env_attribute(
+    attributes: &mut Vec<KeyValue>,
+    env: &crate::env_map::EnvMap,
+    env_name: &str,
+    key: &'static str,
+) {
+    if let Some(value) = crate::env_map::env_value(env, env_name) {
         if valid_attribute_value(value) {
             attributes.push(KeyValue::new(key, value.to_string()));
         }
