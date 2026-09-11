@@ -16,7 +16,7 @@ use tracing::Instrument;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let env = flags::process_env_map()?;
     let log_filter = flags::log_filter(&env)?;
-    let _telemetry = telemetry::init("canonical-mcp-server", "canonical-cloud", log_filter);
+    let _telemetry = telemetry::init("canonical-mcp-server", "canonical-cloud", log_filter, &env);
     tracing::info!(transport = "stdio", "starting MCP server");
     let server_span = tracing::info_span!("mcp.server", rpc.system = "mcp", transport = "stdio");
     let service = server::CanonicalMcp::new()?
