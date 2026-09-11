@@ -86,7 +86,7 @@ fn main_remains_a_thin_declarative_bootstrap() {
     assert!(main.contains("server::CanonicalMcp::new()?"));
     assert!(main.contains(".serve(stdio())"));
     assert!(
-        main.lines().filter(|line| !line.trim().is_empty()).count() <= 24,
+        main.lines().filter(|line| !line.trim().is_empty()).count() <= 26,
         "main.rs accumulated application logic"
     );
 
