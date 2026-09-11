@@ -80,12 +80,13 @@ fn main_remains_a_thin_declarative_bootstrap() {
         module_declarations,
         BTreeSet::from(["env_map", "flags", "server", "telemetry", "tools"])
     );
-    assert!(main.contains("flags::apply_cli_flags()?"));
+    assert!(main.contains("flags::process_env_map()?"));
+    assert!(main.contains("flags::log_filter(&env)?"));
     assert!(main.contains("telemetry::init("));
     assert!(main.contains("server::CanonicalMcp::new()?"));
     assert!(main.contains(".serve(stdio())"));
     assert!(
-        main.lines().filter(|line| !line.trim().is_empty()).count() <= 24,
+        main.lines().filter(|line| !line.trim().is_empty()).count() <= 26,
         "main.rs accumulated application logic"
     );
 

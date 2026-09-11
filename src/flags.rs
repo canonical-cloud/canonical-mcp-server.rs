@@ -1,4 +1,7 @@
 //! Strict, stdio-safe flags2env startup configuration.
+//!
+//! CLI values are validated into an ordinary `EnvMap`; the process environment
+//! is copied once at bootstrap and is never mutated.
 
 use std::{
     error::Error,
@@ -9,15 +12,18 @@ use std::{
 use flags2env::BundledFlags2Env;
 use tracing_subscriber::EnvFilter;
 
-use crate::env_map::{EnvMap, env_value, get_env_map, process_argv, process_env_map};
+use crate::env_map::{env_value, get_env_map, process_argv, process_env_map as capture_process_env, EnvMap};
 
+const RUST_LOG: &str = "RUST_LOG";
 const DEFAULT_LOG_FILTER: &str = "info,hyper=warn";
+const MAX_LOG_FILTER_BYTES: usize = 4_096;
 
 fn invalid_input(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message.into())
 }
 
-pub fn parse_cli_flags(argv: &[String], config_path: &Path) -> Result<EnvMap, Box<dyn Error>> {
+/// Parse CLI arguments into an immutable environment override value.
+pub fn parse_cli_overrides(argv: &[String], config_path: &Path) -> Result<EnvMap, Box<dyn Error>> {
     let config_path = config_path
         .to_str()
         .ok_or_else(|| invalid_input(".cli-flags.toml path is not valid UTF-8"))?;
@@ -50,12 +56,33 @@ pub fn parse_cli_flags(argv: &[String], config_path: &Path) -> Result<EnvMap, Bo
         ))
         .into());
     }
+    for (key, value) in &parsed.flags {
+        if key != RUST_LOG {
+            return Err(
+                invalid_input(format!("unsupported CLI environment override: {key}")).into(),
+            );
+        }
+        if value.len() > MAX_LOG_FILTER_BYTES || value.chars().any(char::is_control) {
+            return Err(invalid_input("CLI log filter is invalid or too large").into());
+        }
+    }
 
-    let env = get_env_map(EnvMap::new(), parsed.flags);
-    let filter = env_value(&env, "RUST_LOG").unwrap_or(DEFAULT_LOG_FILTER);
-    EnvFilter::try_new(filter)
-        .map_err(|error| invalid_input(format!("invalid --log-filter value: {error}")))?;
-    Ok(env)
+    Ok(parsed.flags.into_iter().collect())
+}
+
+pub fn log_filter(env: &EnvMap) -> Result<EnvFilter, Box<dyn Error>> {
+    // `env_value` treats an empty or whitespace-only RUST_LOG as unset so an
+    // empty export falls back to the default filter instead of an empty one.
+    let filter = env_value(env, RUST_LOG).unwrap_or(DEFAULT_LOG_FILTER);
+    Ok(EnvFilter::try_new(filter)
+        .map_err(|error| invalid_input(format!("invalid --log-filter value: {error}")))?)
+}
+
+/// Compatibility helper used only by deterministic parser tests.
+#[cfg(test)]
+pub fn parse_cli_flags(argv: &[String], config_path: &Path) -> Result<EnvFilter, Box<dyn Error>> {
+    let overrides = parse_cli_overrides(argv, config_path)?;
+    log_filter(&get_env_map(EnvMap::new(), overrides))
 }
 
 pub fn resolve_config_path() -> Result<PathBuf, Box<dyn Error>> {
@@ -92,25 +119,11 @@ pub fn resolve_config_path() -> Result<PathBuf, Box<dyn Error>> {
         })
 }
 
-pub fn apply_cli_flags() -> Result<EnvMap, Box<dyn Error>> {
-    let argv = process_argv();
+pub fn process_env_map() -> Result<EnvMap, Box<dyn Error>> {
     let config_path = resolve_config_path()?;
-    Ok(get_env_map(
-        process_env_map(),
-        parse_cli_flags(&argv, &config_path)?,
-    ))
-}
-
-pub fn process_startup_flags() -> Result<EnvMap, Box<dyn Error>> {
-    apply_cli_flags()
-}
-
-pub fn process_log_filter() -> Result<EnvFilter, Box<dyn Error>> {
-    let env = apply_cli_flags()?;
-    let filter = env_value(&env, "RUST_LOG").unwrap_or(DEFAULT_LOG_FILTER);
-    EnvFilter::try_new(filter)
-        .map_err(|error| invalid_input(format!("invalid --log-filter value: {error}")))
-        .map_err(Into::into)
+    let argv = process_argv();
+    let overrides = parse_cli_overrides(&argv, &config_path)?;
+    Ok(get_env_map(capture_process_env(), overrides))
 }
 
 #[cfg(test)]
@@ -127,12 +140,8 @@ mod tests {
             "canonical-mcp-server".to_owned(),
             "--log-filter=debug,hyper=warn".to_owned(),
         ];
-        let env = parse_cli_flags(&argv, &config_path()).expect("valid operational flag");
-        assert!(
-            env_value(&env, "RUST_LOG")
-                .unwrap_or_default()
-                .contains("debug")
-        );
+        let filter = parse_cli_flags(&argv, &config_path()).expect("valid operational flag");
+        assert!(filter.to_string().contains("debug"));
     }
 
     #[test]
@@ -158,29 +167,26 @@ mod tests {
 
     #[test]
     fn cli_overrides_merge_into_map_without_mutating_process_env() {
-        let before = std::env::var_os("RUST_LOG");
-        let parsed = parse_cli_flags(
+        let before = std::env::var_os(RUST_LOG);
+        let overrides = parse_cli_overrides(
             &["canonical-mcp-server".into(), "--log-filter=debug".into()],
             &config_path(),
         )
         .expect("valid flags");
-        let env = get_env_map(
-            EnvMap::from([("RUST_LOG".into(), "info".into())]),
-            parsed,
-        );
-        assert_eq!(env_value(&env, "RUST_LOG"), Some("debug"));
-        assert_eq!(std::env::var_os("RUST_LOG"), before);
+        let env = get_env_map(EnvMap::from([(RUST_LOG.into(), "info".into())]), overrides);
+        assert_eq!(env_value(&env, RUST_LOG), Some("debug"));
+        assert_eq!(std::env::var_os(RUST_LOG), before);
     }
 
     #[test]
     fn parse_failure_does_not_mutate_process_environment() {
-        let before = std::env::var_os("RUST_LOG");
+        let before = std::env::var_os(RUST_LOG);
         assert!(parse_cli_flags(
             &["canonical-mcp-server".into(), "--this-flag-is-not-declared".into()],
             &config_path(),
         )
         .is_err());
-        assert_eq!(std::env::var_os("RUST_LOG"), before);
+        assert_eq!(std::env::var_os(RUST_LOG), before);
     }
 
     #[test]
@@ -189,5 +195,11 @@ mod tests {
         let production = SRC.split("#[cfg(test)]").next().unwrap_or(SRC);
         assert!(!production.contains("std::env::set_var"));
         assert!(!production.contains("env::set_var"));
+    }
+
+    #[test]
+    fn derives_the_filter_from_the_merged_environment_value() {
+        let env = EnvMap::from([(RUST_LOG.to_owned(), "warn,hyper=error".to_owned())]);
+        assert!(log_filter(&env).unwrap().to_string().contains("warn"));
     }
 }

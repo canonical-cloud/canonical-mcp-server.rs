@@ -56,14 +56,17 @@ impl Drop for TelemetryGuard {
 ///
 /// Exporter failures fail open to stderr-only telemetry. Error details are not
 /// printed because an OTLP endpoint or header can contain credentials.
+///
+/// `filter` is the already-validated log filter (flags::log_filter fails closed
+/// on an invalid value before telemetry starts); `env` is the immutable startup
+/// snapshot the OTLP endpoint and resource attributes are read from, so nothing
+/// here touches the process environment.
 pub fn init(
     service_name: &'static str,
     service_namespace: &'static str,
+    filter: EnvFilter,
     env: &crate::env_map::EnvMap,
 ) -> TelemetryGuard {
-    let filter = crate::env_map::env_value(env, "RUST_LOG")
-        .and_then(|value| EnvFilter::try_new(value).ok())
-        .unwrap_or_else(|| EnvFilter::new("info,hyper=warn"));
     let resource = resource(service_name, service_namespace, env);
     let endpoint = crate::env_map::env_value(env, "OTEL_EXPORTER_OTLP_ENDPOINT").map(str::to_owned);
 
