@@ -38,3 +38,6 @@ sops-private*.txt
 !/env/enc/dev.env.enc
 !/env/enc/prod.env.enc
 # END ores-sops dotenv policy
+
+# Machine-local agent instruction symlink (absolute path; never committed)
+.ores/
