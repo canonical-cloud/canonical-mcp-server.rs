@@ -34,3 +34,4 @@ sops-private*.txt
 /env/enc/*
 !/env/enc/dev.env.enc
 !/env/enc/prod.env.enc
+# END ores-sops dotenv policy
