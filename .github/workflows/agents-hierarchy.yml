@@ -9,6 +9,42 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: agents-hierarchy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
-    uses: canonical-cloud/canonical.cloud/.github/workflows/agents-hierarchy.yml@202c89a988a9adaa43f5113d9d0d1d009bf60e3b
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact repository revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact revision
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Check out immutable portable authority validator
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: canonical-cloud/canonical.cloud
+          ref: 69fc15a96e818d5ab15c4f48a1fdc17587a4ff46
+          path: .agents-validator
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - name: Validate canonical file and provider pointers
+        run: >-
+          python3 -B .agents-validator/scripts/resolve_agents.py
+          --repo-root "$GITHUB_WORKSPACE" --check-layout
+      - name: Exercise ancestor discovery and diagnostics
+        run: python3 -B .agents-validator/scripts/resolve_agents.py --self-test
+      - name: Print repository chain from a nested directory
+        run: |
+          mkdir -p .agents-ci/nested/path
+          python3 -B .agents-validator/scripts/resolve_agents.py \
+            --cwd .agents-ci/nested/path --print-chain
