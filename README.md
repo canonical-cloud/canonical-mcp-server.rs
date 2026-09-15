@@ -1,11 +1,11 @@
 # canonical-mcp-server.rs
 
 An [MCP](https://modelcontextprotocol.io) (Model Context Protocol) server for
-operating the **[canonical.cloud](https://canonical.cloud)** stack (GitHub org
-[`canonical-cloud`](https://github.com/canonical-cloud)). It is developer/ops
-tooling, not a deployed app: it runs locally over stdio and gives an MCP client
-(such as Claude Code) read-only visibility into CI, monorepo submodule pins,
-deployment health, and the stack's operational docs.
+operating and auditing the **[canonical.cloud](https://canonical.cloud)** stack
+(GitHub org [`canonical-cloud`](https://github.com/canonical-cloud)). It runs
+locally over stdio and gives an MCP client read-only visibility into CI,
+submodule pins, deployment health, cloud/account readiness, and operational
+docs.
 
 Built on the official Rust MCP SDK
 ([`rmcp`](https://github.com/modelcontextprotocol/rust-sdk)) with a tokio
@@ -15,18 +15,51 @@ runtime and reqwest (rustls, no OpenSSL).
 
 | Tool | Parameters | Purpose |
 | --- | --- | --- |
-| `stack_ci_status` | `repo` (optional) | Latest five GitHub Actions runs per stack repo: branch, status, conclusion, workflow, run URL, timestamp |
-| `submodule_pins` | — | Compare `canonical-monorepo`'s `apps/` submodule pins against each app repo's `main` HEAD: pinned SHA, HEAD SHA, current?, commits behind |
-| `service_health` | `base_url` | Probe `{base}/healthz`, `{base}/readyz`, `{base}/api/v1/health` with a short timeout; return status codes and truncated bodies |
-| `stack_docs` | `doc`: `deploy` \| `repo-boundaries` \| `org-map` | Fetch `docs/deploy.md` or `docs/repo-boundaries.md` from `canonical-monorepo` as raw markdown (live), or `org-map` — an embedded, offline org/infra knowledge doc (GitOps runtime, shared k8s libs, dpm migrations, Squarespace/Cloudflare DNS, fiducia.cloud) |
-| `domain_status` | `domain` (default `canonical.cloud`) | Registrar-side state via public RDAP (registrar, status codes, registration/expiration events, delegated nameservers — Squarespace exposes no public domains API, so RDAP is the registrar integration) plus live NS/A/AAAA via DNS-over-HTTPS and whether delegation points at Cloudflare |
-| `cloudflare_dns` | `domain` (default `canonical.cloud`) | List a Cloudflare zone's DNS records (type, name, content, proxied, TTL). Read-only; needs `CLOUDFLARE_API_TOKEN` |
-| `k8s_status` | `resource`: `nodes` \| `pods` \| `deployments` \| `services` \| `ingresses`; `namespace`, `context` (optional) | Read-only cluster state via allowlisted `kubectl get … -o json`, summarized to name/namespace/status/age rows. Never mutates the cluster |
-| `fiducia_status` | — | Read-only fiducia.cloud check: required-secret *presence* (never values) and lock/lease health. Needs `FIDUCIA_URL` + `FIDUCIA_TOKEN` (optional `FIDUCIA_REQUIRED_SECRETS` csv) |
+| `readiness_catalog` | — | Offline matrix for the 12 native account providers, credentials, least-privilege guidance, and check families |
+| `account_readiness` | `provider`; `scope` optional | Strict read-only native account scan for AWS, GCP, Azure, Cloudflare, GitHub, Upstash, Vercel, DigitalOcean, Netlify, Render, Fly.io, or Heroku |
+| `external_tool_catalog` | — | Offline capability/safety matrix for the supported open-source scanners |
+| `external_tool_status` | — | Fixed local version probes showing which approved scanners are installed; does not access customer accounts |
+| `external_readiness` | `tool`; `provider`, `target`, `benchmark` as applicable | Run a fixed adapter for Prowler, ScoutSuite, Trivy, Checkov, Kubescape, kube-bench, kubeaudit, Infracost, or Powerpipe |
+| `browser_readiness` | `provider`, `engine`; `url` optional | Playwright/Puppeteer console fallback that performs no clicks/forms and blocks non-read HTTP methods/cross-provider navigation |
+| `stack_ci_status` | `repo` optional | Latest five GitHub Actions runs per stack repo: branch, status, conclusion, workflow, run URL, timestamp |
+| `submodule_pins` | — | Compare `canonical-monorepo` app submodule pins against each app repo's `main` HEAD |
+| `service_health` | `base_url` | Probe `{base}/healthz`, `{base}/readyz`, `{base}/api/v1/health` with bounded response bodies |
+| `stack_docs` | `doc`: `deploy` \| `repo-boundaries` \| `org-map` | Fetch operational docs or embedded org/infra knowledge |
+| `domain_status` | `domain` default `canonical.cloud` | Registrar state via RDAP plus live NS/A/AAAA DNS state |
+| `cloudflare_dns` | `domain` default `canonical.cloud` | Read-only Cloudflare DNS record inventory |
+| `k8s_status` | `resource`; `namespace`, `context` optional | Read-only allowlisted `kubectl get … -o json` cluster state |
+| `fiducia_status` | — | Read-only required-secret *presence* and lock/lease health; never secret values |
 
-The stack repositories covered by `stack_ci_status`:
+See [`docs/account-readiness.md`](docs/account-readiness.md) for the native
+provider model and [`docs/open-source-parity.md`](docs/open-source-parity.md)
+for the open-source scanner parity/cross-check architecture.
+
+The stack repositories covered by `stack_ci_status` are
 `canonical-monorepo`, `canonical-web-server.rs`,
-`canonical-marketing-site.web`, `canonical-interfaces`.
+`canonical-marketing-site.web`, and `canonical-interfaces`.
+
+## Read-only account-audit contract
+
+The native account scanner is fail-closed:
+
+- SaaS adapters issue `GET` requests only to compiled HTTPS host allowlists.
+- AWS/GCP/Azure/Fly adapters invoke exact read/list/describe CLI command
+  families without a shell or caller-supplied arbitrary arguments.
+- Browser mode aborts non-GET/HEAD/OPTIONS requests and performs no clicks or
+  form submissions.
+- No MCP tool can create, deploy, update, delete, restart, scale, rotate
+  secrets, or otherwise mutate customer resources.
+- Tokens and secret values are never returned or logged.
+
+The open-source adapter follows the same boundary at the orchestration layer:
+there is no generic executable, shell, argument array, URL, or environment
+parameter. Each tool has a compiled executable/argument grammar. Cloud scanners
+inherit the process's provider credential, so that credential **must also be
+restricted read-only at the provider**.
+
+External tool installation is deliberately outside MCP. Pin scanner versions or
+immutable images in the devshell/container/build process and use
+`external_tool_status` to verify what is present.
 
 ## Running
 
@@ -37,8 +70,9 @@ cargo run -- --log-filter=debug,hyper=warn
 
 The binary audits `.cli-flags.toml` before telemetry or MCP startup. Set
 `CANONICAL_FLAGS_CONFIG` when an installed binary cannot discover the contract
-from the current directory, executable directory, or `../share/canonical-mcp-server`.
-Only the non-secret log filter is accepted as a flag.
+from the current directory, executable directory, or
+`../share/canonical-mcp-server`. Only the non-secret log filter is accepted as
+a flag.
 
 The server speaks MCP over stdin/stdout; it is meant to be launched by an MCP
 client, not used interactively.
@@ -64,40 +98,55 @@ claude mcp add canonical-mcp -- \
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `GITHUB_TOKEN` (or `GH_TOKEN`) | no | Bearer token for GitHub API calls. Unauthenticated works but is rate-limited to 60 requests/hour per IP. |
-| `CLOUDFLARE_API_TOKEN` | for `cloudflare_dns` | Read-only Cloudflare token (Zone.Zone:Read, Zone.DNS:Read). |
-| `KUBECONFIG` / kubeconfig | for `k8s_status` | `k8s_status` shells out to `kubectl` on `PATH` and uses your normal kubeconfig/contexts. |
-| `FIDUCIA_URL` + `FIDUCIA_TOKEN` | for `fiducia_status` | Base URL and read-scoped bearer token for fiducia.cloud. |
-| `FIDUCIA_REQUIRED_SECRETS` | no | Comma-separated secret names for `fiducia_status` to assert present (default: this stack's own credentials). |
+| `GITHUB_TOKEN` / `GH_TOKEN` | for authenticated GitHub scans | Read-scoped GitHub credential |
+| `CLOUDFLARE_API_TOKEN` | for Cloudflare scans | Cloudflare API token containing only required `Read` groups |
+| `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_READ_ONLY_TOKEN` | for Upstash | Read-only Redis REST endpoint/token; the standard write-capable token is intentionally unsupported |
+| `VERCEL_AUDIT_TOKEN` | for Vercel | Dedicated audit identity/token; Canonical issues GET only |
+| `DIGITALOCEAN_READ_ONLY_TOKEN` | for DigitalOcean | DigitalOcean Read Only / `api:read` credential |
+| `NETLIFY_AUDIT_TOKEN` | for Netlify | Dedicated audit identity/token; Canonical issues GET only |
+| `RENDER_AUDIT_TOKEN` | for Render | Dedicated audit identity/API key; Canonical issues GET only |
+| `HEROKU_READ_ONLY_TOKEN` | for Heroku | OAuth token created with `read` scope |
+| normal AWS CLI credential chain | for AWS | Audit role, never AdministratorAccess |
+| normal gcloud/ADC identity | for GCP | Viewer/Monitoring/Asset/Billing/Recommender read roles as required |
+| normal Azure CLI identity | for Azure | Reader + Monitoring Reader + Cost Management Reader |
+| flyctl credential | for Fly.io | Dedicated audit identity; Canonical invokes only allowlisted read commands |
+| `KUBECONFIG` / kubeconfig | for Kubernetes scans | Read-only RBAC for `get`/`list`/`watch` where external cluster scanners are used |
+| `CANONICAL_<PROVIDER>_MONTHLY_BUDGET_USD` | optional | Per-provider monthly budget for native spend-utilization findings |
+| `CANONICAL_READINESS_MONTHLY_BUDGET_USD` | optional | Global budget fallback |
+| `CANONICAL_AUDIT_ROOT` | for local external scans when cwd is not the desired root | Filesystem root beneath which Trivy/Checkov/Kubescape/kubeaudit/Infracost targets must resolve; default `.` |
+| `CANONICAL_EXTERNAL_TOOL_TIMEOUT_SECS` | optional | External scanner timeout, clamped to 10–600 seconds; default 180 |
+| `CANONICAL_PLAYWRIGHT_STORAGE_STATE` | optional browser fallback | Sensitive pre-authenticated Playwright state file |
+| `CANONICAL_PUPPETEER_USER_DATA_DIR` | optional browser fallback | Sensitive pre-authenticated Puppeteer profile directory |
+| `FIDUCIA_URL` + `FIDUCIA_TOKEN` | for `fiducia_status` | Base URL and read-scoped bearer token for fiducia.cloud |
+| `FIDUCIA_REQUIRED_SECRETS` | optional | Comma-separated secret names for `fiducia_status` to assert present |
 
-The server makes outbound HTTPS requests only — to `api.github.com`,
-`raw.githubusercontent.com`, `rdap.org` (and the registry RDAP endpoint it
-redirects to), `cloudflare-dns.com`, `api.cloudflare.com`, whatever `base_url`
-you pass to `service_health`, and whatever `FIDUCIA_URL` you configure. Every
-tool is read-only by design; there are deliberately no write-capable
-Cloudflare, GitHub, Kubernetes, or fiducia tools (matching the read-only MCP
-contract used across the org's ops repos). `fiducia_status` never fetches
-secret values, only presence, and never logs the fiducia token.
+Native bearer-token HTTP requests use a no-redirect client and bounded response
+bodies. Public/token-less endpoints use the normal bounded client. External
+scanner binaries may make their own provider/network requests according to the
+upstream tool; that is why Canonical pins the executable/argument surface and
+requires provider-level read-only credentials in addition to its own adapter
+barrier.
 
 ## Layout
 
 - `src/main.rs` — bootstrap only; serves the handler over stdio.
 - `src/server.rs` — tool router, parameter schemas, `ServerHandler`.
-- `src/tools/github.rs` — GitHub client plus pure JSON summarization
-  (CI runs, `.gitmodules` parsing, pin comparison).
+- `src/tools/readiness.rs` — native twelve-provider readiness collectors,
+  normalized findings, budget/utilization logic, browser orchestration.
+- `src/tools/external.rs` — fixed open-source scanner adapters and parsers.
+- `src/tools/external_status.rs` — fixed scanner version/install probes.
+- `src/tools/github.rs` — GitHub client plus pure JSON summarization.
 - `src/tools/health.rs` — endpoint probing and body truncation.
-- `src/tools/docs.rs` — monorepo doc fetching plus the embedded `org-map`
-  knowledge doc.
-- `src/tools/domain.rs` — RDAP + DNS-over-HTTPS summarization and domain
-  validation.
+- `src/tools/docs.rs` — monorepo docs plus embedded org/infra knowledge.
+- `src/tools/domain.rs` — RDAP + DNS-over-HTTPS summarization and validation.
 - `src/tools/cloudflare.rs` — Cloudflare zone/record listing.
-- `src/tools/fiducia.rs` — fiducia.cloud secret-presence and lock/lease
-  health check.
-- `src/tools/k8s.rs` — allowlisted `kubectl get` runner and per-resource
-  summarizers.
+- `src/tools/fiducia.rs` — fiducia.cloud secret-presence and lock/lease checks.
+- `src/tools/k8s.rs` — allowlisted `kubectl get` runner and summarizers.
+- `browser/readiness-audit.mjs` — Playwright/Puppeteer read-only browser guard.
 
-Network access is confined to the thin client/orchestration functions; all
-response interpretation is pure functions over fixture-testable JSON.
+Response interpretation should remain pure and fixture-testable. Live account
+access belongs in thin orchestration functions, and tests must not depend on
+customer networks/accounts.
 
 ## Development
 
@@ -105,6 +154,7 @@ response interpretation is pure functions over fixture-testable JSON.
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
+npm run browser:test
 ```
 
 The Nix dev shell mirrors the sibling repos: `./shell` drops you into it
