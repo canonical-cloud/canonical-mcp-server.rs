@@ -126,7 +126,13 @@ fn every_tool_file_is_registered_once() {
         .collect::<BTreeSet<_>>();
 
     assert_eq!(registry, files, "tool module registry drifted from files");
-    assert_eq!(registry.len(), 7, "unexpected tool surface change");
+    assert_eq!(registry.len(), 11, "unexpected tool surface change");
+    for readiness_module in ["external", "external_status", "observability", "readiness"] {
+        assert!(
+            registry.contains(readiness_module),
+            "readiness module {readiness_module} is not registered"
+        );
+    }
 }
 
 #[test]
@@ -192,8 +198,24 @@ fn tool_implementations_do_not_depend_on_server_framework_types() {
     }
 
     let server = source("src/server.rs");
-    assert!(server
-        .contains("use crate::tools::{cloudflare, docs, domain, fiducia, github, health, k8s};"));
+    for tool_module in [
+        "cloudflare",
+        "docs",
+        "domain",
+        "external",
+        "external_status",
+        "fiducia",
+        "github",
+        "health",
+        "k8s",
+        "observability",
+        "readiness",
+    ] {
+        assert!(
+            server.contains(tool_module),
+            "server does not import registered tool module {tool_module}"
+        );
+    }
     assert!(!server.contains("tokio::process::Command"));
 }
 
@@ -206,7 +228,7 @@ fn bearer_token_requests_use_a_no_redirect_client() {
         server.contains("reqwest::redirect::Policy::none()"),
         "server must build a no-redirect client for bearer-token requests"
     );
-    // The three tools that send a bearer token use the no-redirect client.
+    // The tools that send bearer tokens use the no-redirect client.
     assert!(
         server.contains("github::GitHubClient::new(api_http"),
         "GitHub client must use the no-redirect client"
@@ -218,6 +240,14 @@ fn bearer_token_requests_use_a_no_redirect_client() {
     assert!(
         server.contains("fiducia::status_report(&self.api_http"),
         "fiducia status must use the no-redirect client"
+    );
+    assert!(
+        server.contains("readiness::scan(&self.api_http"),
+        "native readiness API scans must use the no-redirect client"
+    );
+    assert!(
+        server.contains("observability::scan(&self.api_http"),
+        "Prometheus/OpenCost bearer-token reads must use the no-redirect client"
     );
     // RDAP intentionally relies on rdap.org redirects and carries no token, so
     // it must keep using the redirect-following client.
