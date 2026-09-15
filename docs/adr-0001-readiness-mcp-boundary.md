@@ -19,6 +19,7 @@ The following invariants are mandatory:
 - account-readiness tools may return bounded provider resource/account metadata and derived findings, but not Canonical customer report/evidence bodies, R2 locators, signed URLs, customer membership, reviewer decisions, or database credentials;
 - SaaS adapters remain GET-only against compiled HTTPS host allowlists;
 - CLI-backed adapters remain fixed read/list/describe command families with no shell or caller-controlled executable/argument array;
+- caller-supplied provider scopes are identifiers, not command fragments or URL paths: they are bounded, cannot begin with `-`, and accept only ASCII letters, digits, `-`, and `_`;
 - browser fallback remains observation-only: no clicks/forms, no mutation methods, and no cross-provider top-level navigation;
 - provider credentials should be genuinely read-only where the provider supports that. A code-level GET/read barrier does not make an overprivileged credential least-privilege;
 - destructive/admin actions stay outside this repository.
