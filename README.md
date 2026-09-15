@@ -17,6 +17,7 @@ runtime and reqwest (rustls, no OpenSSL).
 | --- | --- | --- |
 | `readiness_catalog` | — | Offline matrix for the 12 native account providers, credentials, least-privilege guidance, and check families |
 | `account_readiness` | `provider`; `scope` optional | Strict read-only native account scan for AWS, GCP, Azure, Cloudflare, GitHub, Upstash, Vercel, DigitalOcean, Netlify, Render, Fly.io, or Heroku |
+| `operational_readiness` | — | Fixed read-only Prometheus/OpenCost evidence for high CPU, real filesystem free space, memory pressure, scrape-target health, Kubernetes allocation cost, and budget pressure |
 | `external_tool_catalog` | — | Offline capability/safety matrix for the supported open-source scanners |
 | `external_tool_status` | — | Fixed local version probes showing which approved scanners are installed; does not access customer accounts |
 | `external_readiness` | `tool`; `provider`, `target`, `benchmark` as applicable | Run a fixed adapter for Prowler, ScoutSuite, Trivy, Checkov, Kubescape, kube-bench, kubeaudit, Infracost, or Powerpipe |
@@ -31,8 +32,10 @@ runtime and reqwest (rustls, no OpenSSL).
 | `fiducia_status` | — | Read-only required-secret *presence* and lock/lease health; never secret values |
 
 See [`docs/account-readiness.md`](docs/account-readiness.md) for the native
-provider model and [`docs/open-source-parity.md`](docs/open-source-parity.md)
-for the open-source scanner parity/cross-check architecture.
+provider model, [`docs/open-source-parity.md`](docs/open-source-parity.md) for
+the open-source scanner parity/cross-check architecture, and
+[`docs/operational-readiness.md`](docs/operational-readiness.md) for
+Prometheus/OpenCost evidence and thresholds.
 
 The stack repositories covered by `stack_ci_status` are
 `canonical-monorepo`, `canonical-web-server.rs`,
@@ -47,6 +50,9 @@ The native account scanner is fail-closed:
   families without a shell or caller-supplied arbitrary arguments.
 - Browser mode aborts non-GET/HEAD/OPTIONS requests and performs no clicks or
   form submissions.
+- Prometheus/OpenCost endpoints come only from operator-owned environment
+  configuration, use fixed GET queries, and do not accept caller-supplied
+  PromQL or URLs.
 - No MCP tool can create, deploy, update, delete, restart, scale, rotate
   secrets, or otherwise mutate customer resources.
 - Tokens and secret values are never returned or logged.
@@ -113,6 +119,14 @@ claude mcp add canonical-mcp -- \
 | `KUBECONFIG` / kubeconfig | for Kubernetes scans | Read-only RBAC for `get`/`list`/`watch` where external cluster scanners are used |
 | `CANONICAL_<PROVIDER>_MONTHLY_BUDGET_USD` | optional | Per-provider monthly budget for native spend-utilization findings |
 | `CANONICAL_READINESS_MONTHLY_BUDGET_USD` | optional | Global budget fallback |
+| `CANONICAL_PROMETHEUS_URL` | for Prometheus operational evidence | Operator-configured HTTPS endpoint; loopback HTTP is allowed for port-forwarding |
+| `CANONICAL_PROMETHEUS_BEARER_TOKEN` | optional | Read-only proxy/API bearer token; never returned/logged |
+| `CANONICAL_OPENCOST_URL` | for OpenCost operational evidence | Operator-configured HTTPS endpoint; loopback HTTP is allowed for port-forwarding |
+| `CANONICAL_OPENCOST_BEARER_TOKEN` | optional | Read-only proxy/API bearer token; never returned/logged |
+| `CANONICAL_CPU_HIGH_PERCENT` | optional | High-CPU threshold; default 85 |
+| `CANONICAL_DISK_FREE_LOW_PERCENT` | optional | Low-filesystem-free threshold; default 15 |
+| `CANONICAL_MEMORY_FREE_LOW_PERCENT` | optional | Low-available-memory threshold; default 15 |
+| `CANONICAL_KUBERNETES_MONTHLY_BUDGET_USD` | optional | Budget for OpenCost month-window allocation findings |
 | `CANONICAL_AUDIT_ROOT` | for local external scans when cwd is not the desired root | Filesystem root beneath which Trivy/Checkov/Kubescape/kubeaudit/Infracost targets must resolve; default `.` |
 | `CANONICAL_EXTERNAL_TOOL_TIMEOUT_SECS` | optional | External scanner timeout, clamped to 10–600 seconds; default 180 |
 | `CANONICAL_PLAYWRIGHT_STORAGE_STATE` | optional browser fallback | Sensitive pre-authenticated Playwright state file |
@@ -133,6 +147,7 @@ barrier.
 - `src/server.rs` — tool router, parameter schemas, `ServerHandler`.
 - `src/tools/readiness.rs` — native twelve-provider readiness collectors,
   normalized findings, budget/utilization logic, browser orchestration.
+- `src/tools/observability.rs` — fixed Prometheus/OpenCost operational evidence.
 - `src/tools/external.rs` — fixed open-source scanner adapters and parsers.
 - `src/tools/external_status.rs` — fixed scanner version/install probes.
 - `src/tools/github.rs` — GitHub client plus pure JSON summarization.
