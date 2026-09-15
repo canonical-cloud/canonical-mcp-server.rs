@@ -2,8 +2,8 @@
 
 Cloud inventory alone cannot prove that a running system has enough CPU, memory, or filesystem headroom. `operational_readiness` therefore consumes read-only evidence from two open-source systems when the operator configures them:
 
-- **Prometheus** — fixed instant queries for CPU utilization, real filesystem available percentage, available-memory percentage, and scrape target health.
-- **OpenCost** — fixed month-window allocation query aggregated by Kubernetes namespace.
+- **Prometheus** — fixed instant-query `GET /api/v1/query` requests for CPU utilization, real filesystem available percentage, available-memory percentage, and scrape target health.
+- **OpenCost** — fixed `GET /allocation` month-window allocation query aggregated by Kubernetes namespace.
 
 The MCP caller does not provide a URL or PromQL expression. Endpoints and optional bearer tokens are operator-owned environment configuration, and Canonical issues GET requests only.
 
@@ -22,7 +22,7 @@ CANONICAL_MEMORY_FREE_LOW_PERCENT=15         # optional; 0.1..99
 CANONICAL_KUBERNETES_MONTHLY_BUDGET_USD=500 # optional
 ```
 
-Remote endpoints must use HTTPS. Plain HTTP is accepted only for loopback (`localhost`, `127.0.0.1`, `::1`) so an operator can use a local port-forward without weakening remote transport requirements.
+Remote endpoints must use HTTPS. Plain HTTP is accepted only for loopback (`localhost`, `127.0.0.1`, `::1`) so an operator can use a local port-forward without weakening remote transport requirements. Embedded `user:password@host` URL credentials are rejected; use a dedicated read-only proxy or the optional bearer-token environment variables instead.
 
 ## Prometheus evidence
 
@@ -42,9 +42,11 @@ Default finding thresholds:
 | Available memory | <= 15% | <= 5% |
 | Prometheus target down | high | — |
 
-This finally gives Canonical a defensible low-disk check: it uses actual filesystem telemetry rather than pretending that a cloud disk's provisioned size tells us its free space.
+This gives Canonical a defensible low-disk check: it uses actual filesystem telemetry rather than pretending that a cloud disk's provisioned size tells us its free space.
 
 Missing metrics are `unknown`, not `pass`. If node-exporter is not deployed, a storage resource should not be marked healthy merely because the provider API is reachable.
+
+Prometheus's HTTP API supports instant expressions over `GET /api/v1/query`; Canonical deliberately uses only that read form even if a Prometheus release also permits POST. Queries are compiled into the binary and URL-encoded by the HTTP client.
 
 ## OpenCost evidence
 
