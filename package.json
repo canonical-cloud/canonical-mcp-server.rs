@@ -1,0 +1,13 @@
+{
+  "name": "@canonical-cloud/canonical-mcp-readiness-browser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "browser:test": "node --test browser/readiness-audit.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0",
+    "puppeteer": "25.11.0"
+  }
+}
