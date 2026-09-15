@@ -1,0 +1,39 @@
+name: readiness-generated-fixes
+
+on:
+  push:
+    branches: [feat/read-only-multicloud-readiness]
+    paths:
+      - .github/workflows/readiness-generated-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825213c011837b7908859 # v7
+        with:
+          ref: feat/read-only-multicloud-readiness
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          toolchain: "1.97.0"
+          components: rustfmt
+      - name: Apply deterministic generated fixes
+        run: |
+          cargo fmt --all
+          cargo update -p rustls --precise 0.23.45
+          git diff --check
+      - name: Commit generated fixes to feature branch
+        run: |
+          if git diff --quiet; then
+            echo "No generated changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock src
+          git commit -m "chore: format readiness code and update rustls"
+          git push origin HEAD:feat/read-only-multicloud-readiness
