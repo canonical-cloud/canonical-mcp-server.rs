@@ -165,7 +165,10 @@ fn validate_scope(scope: Option<&str>) -> Result<Option<&str>, String> {
     if trimmed.is_empty() || trimmed.len() > 200 {
         return Err("scope must be 1..=200 characters".to_string());
     }
-    if !trimmed.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '/' | '@')) {
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '/' | '@'))
+    {
         return Err("scope contains unsupported characters".to_string());
     }
     Ok(Some(trimmed))
@@ -282,7 +285,9 @@ async fn run_cli(program: &str, args: Vec<String>) -> Result<Value, String> {
         ));
     }
     if output.stdout.len() > MAX_RESPONSE_BYTES {
-        return Err(format!("{program} output exceeded {MAX_RESPONSE_BYTES} byte limit"));
+        return Err(format!(
+            "{program} output exceeded {MAX_RESPONSE_BYTES} byte limit"
+        ));
     }
     serde_json::from_slice(&output.stdout)
         .map_err(|error| format!("{program} returned invalid JSON: {error}"))
@@ -293,8 +298,13 @@ fn allowed_https_url(url: &str, hosts: &[&str]) -> Result<reqwest::Url, String> 
     if parsed.scheme() != "https" {
         return Err("audit API URL must use https".to_string());
     }
-    let host = parsed.host_str().ok_or_else(|| "audit API URL has no host".to_string())?;
-    if !hosts.iter().any(|allowed| host == *allowed || host.ends_with(&format!(".{allowed}"))) {
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "audit API URL has no host".to_string())?;
+    if !hosts
+        .iter()
+        .any(|allowed| host == *allowed || host.ends_with(&format!(".{allowed}")))
+    {
         return Err(format!("audit API host {host:?} is not allowlisted"));
     }
     Ok(parsed)
@@ -322,67 +332,169 @@ async fn get_json(
     let status = response.status();
     let body = super::read_body_capped(response, MAX_RESPONSE_BYTES).await?;
     if !status.is_success() {
-        return Err(format!("GET {} returned {status}: {}", url, body.chars().take(400).collect::<String>()));
+        return Err(format!(
+            "GET {} returned {status}: {}",
+            url,
+            body.chars().take(400).collect::<String>()
+        ));
     }
-    serde_json::from_str(&body).map_err(|error| format!("GET {} returned invalid JSON: {error}", url))
+    serde_json::from_str(&body)
+        .map_err(|error| format!("GET {} returned invalid JSON: {error}", url))
 }
 
 fn env_token(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|value| !value.trim().is_empty())
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn array_len(value: &Value, key: &str) -> usize {
     value.get(key).and_then(Value::as_array).map_or(0, Vec::len)
 }
 
-fn push_api_check(report: &mut ScanReport, check: &'static str, result: &Result<Value, String>, summary: impl Fn(&Value) -> String) {
+fn push_api_check(
+    report: &mut ScanReport,
+    check: &'static str,
+    result: &Result<Value, String>,
+    summary: impl Fn(&Value) -> String,
+) {
     match result {
-        Ok(value) => report.checks.push(CheckEvidence { check, status: "pass", summary: summary(value) }),
-        Err(error) => report.checks.push(CheckEvidence { check, status: "unknown", summary: error.clone() }),
+        Ok(value) => report.checks.push(CheckEvidence {
+            check,
+            status: "pass",
+            summary: summary(value),
+        }),
+        Err(error) => report.checks.push(CheckEvidence {
+            check,
+            status: "unknown",
+            summary: error.clone(),
+        }),
     }
 }
 
 async fn scan_aws(report: &mut ScanReport) {
     report.transport = "allowlisted aws CLI API calls";
-    let identity_body = match run_cli("aws", vec!["sts".into(), "get-caller-identity".into(), "--output".into(), "json".into()]).await {
+    let identity_body = match run_cli(
+        "aws",
+        vec![
+            "sts".into(),
+            "get-caller-identity".into(),
+            "--output".into(),
+            "json".into(),
+        ],
+    )
+    .await
+    {
         Ok(body) => body,
         Err(error) => {
             report.auth_status = "unavailable";
-            report.checks.push(CheckEvidence { check: "authentication", status: "unknown", summary: error });
+            report.checks.push(CheckEvidence {
+                check: "authentication",
+                status: "unknown",
+                summary: error,
+            });
             report.notes.push("Install/configure the AWS CLI with an audit role. Recommended baseline: SecurityAudit plus CloudWatch read-only and explicit Cost Explorer/Budgets read permissions.".to_string());
             return;
         }
     };
     report.auth_status = "configured";
-    let account = identity_body.get("Account").and_then(Value::as_str).unwrap_or("unknown");
-    report.checks.push(CheckEvidence { check: "authentication", status: "pass", summary: format!("AWS account {account} is readable") });
+    let account = identity_body
+        .get("Account")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    report.checks.push(CheckEvidence {
+        check: "authentication",
+        status: "pass",
+        summary: format!("AWS account {account} is readable"),
+    });
 
-    let instances = run_cli("aws", vec!["ec2".into(), "describe-instances".into(), "--max-items".into(), "100".into(), "--output".into(), "json".into()]).await;
+    let instances = run_cli(
+        "aws",
+        vec![
+            "ec2".into(),
+            "describe-instances".into(),
+            "--max-items".into(),
+            "100".into(),
+            "--output".into(),
+            "json".into(),
+        ],
+    )
+    .await;
     push_api_check(report, "compute-inventory", &instances, |body| {
-        let count = body.get("Reservations").and_then(Value::as_array).map_or(0, |reservations| reservations.iter().map(|reservation| array_len(reservation, "Instances")).sum());
+        let count = body
+            .get("Reservations")
+            .and_then(Value::as_array)
+            .map_or(0, |reservations| {
+                reservations
+                    .iter()
+                    .map(|reservation| array_len(reservation, "Instances"))
+                    .sum()
+            });
         format!("inspected {count} EC2 instances (capped at 100)")
     });
     if let Ok(body) = &instances {
         if let Some(reservations) = body.get("Reservations").and_then(Value::as_array) {
-            for instance in reservations.iter().filter_map(|reservation| reservation.get("Instances").and_then(Value::as_array)).flatten() {
-                let id = instance.get("InstanceId").and_then(Value::as_str).unwrap_or("unknown");
-                let imdsv2_required = instance.pointer("/MetadataOptions/HttpTokens").and_then(Value::as_str) == Some("required");
+            for instance in reservations
+                .iter()
+                .filter_map(|reservation| reservation.get("Instances").and_then(Value::as_array))
+                .flatten()
+            {
+                let id = instance
+                    .get("InstanceId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
+                let imdsv2_required = instance
+                    .pointer("/MetadataOptions/HttpTokens")
+                    .and_then(Value::as_str)
+                    == Some("required");
                 if !imdsv2_required {
-                    add_finding(report, format!("aws.ec2.imdsv2.{id}"), Severity::High, "security-baseline", "EC2 instance does not require IMDSv2", "Instance metadata tokens are not set to required.", "Require IMDSv2 after validating workload compatibility.", Some(id.to_string()));
+                    add_finding(
+                        report,
+                        format!("aws.ec2.imdsv2.{id}"),
+                        Severity::High,
+                        "security-baseline",
+                        "EC2 instance does not require IMDSv2",
+                        "Instance metadata tokens are not set to required.",
+                        "Require IMDSv2 after validating workload compatibility.",
+                        Some(id.to_string()),
+                    );
                 }
-                if instance.get("PublicIpAddress").and_then(Value::as_str).is_some() {
+                if instance
+                    .get("PublicIpAddress")
+                    .and_then(Value::as_str)
+                    .is_some()
+                {
                     add_finding(report, format!("aws.ec2.public-ip.{id}"), Severity::Medium, "security-baseline", "EC2 instance has a public IPv4 address", "A directly reachable public address expands the attack surface.", "Prefer private subnets plus controlled ingress/load balancers unless direct exposure is intentional and documented.", Some(id.to_string()));
                 }
             }
         }
     }
 
-    let volumes = run_cli("aws", vec!["ec2".into(), "describe-volumes".into(), "--max-items".into(), "100".into(), "--output".into(), "json".into()]).await;
-    push_api_check(report, "storage-inventory", &volumes, |body| format!("inspected {} EBS volumes (capped at 100)", array_len(body, "Volumes")));
+    let volumes = run_cli(
+        "aws",
+        vec![
+            "ec2".into(),
+            "describe-volumes".into(),
+            "--max-items".into(),
+            "100".into(),
+            "--output".into(),
+            "json".into(),
+        ],
+    )
+    .await;
+    push_api_check(report, "storage-inventory", &volumes, |body| {
+        format!(
+            "inspected {} EBS volumes (capped at 100)",
+            array_len(body, "Volumes")
+        )
+    });
     if let Ok(body) = &volumes {
         if let Some(items) = body.get("Volumes").and_then(Value::as_array) {
             for volume in items {
-                let id = volume.get("VolumeId").and_then(Value::as_str).unwrap_or("unknown");
+                let id = volume
+                    .get("VolumeId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
                 if volume.get("Encrypted").and_then(Value::as_bool) == Some(false) {
                     add_finding(report, format!("aws.ebs.unencrypted.{id}"), Severity::High, "security-baseline", "EBS volume is not encrypted", "The volume reports Encrypted=false.", "Migrate data to an encrypted volume/KMS policy and enforce encryption-by-default.", Some(id.to_string()));
                 }
@@ -393,15 +505,46 @@ async fn scan_aws(report: &mut ScanReport) {
         }
     }
 
-    let alarms = run_cli("aws", vec!["cloudwatch".into(), "describe-alarms".into(), "--state-value".into(), "ALARM".into(), "--max-items".into(), "100".into(), "--output".into(), "json".into()]).await;
-    push_api_check(report, "utilization-and-capacity", &alarms, |body| format!("{} metric alarms are currently in ALARM", array_len(body, "MetricAlarms")));
+    let alarms = run_cli(
+        "aws",
+        vec![
+            "cloudwatch".into(),
+            "describe-alarms".into(),
+            "--state-value".into(),
+            "ALARM".into(),
+            "--max-items".into(),
+            "100".into(),
+            "--output".into(),
+            "json".into(),
+        ],
+    )
+    .await;
+    push_api_check(report, "utilization-and-capacity", &alarms, |body| {
+        format!(
+            "{} metric alarms are currently in ALARM",
+            array_len(body, "MetricAlarms")
+        )
+    });
     if let Ok(body) = &alarms {
         if let Some(items) = body.get("MetricAlarms").and_then(Value::as_array) {
             for alarm in items {
-                let name = alarm.get("AlarmName").and_then(Value::as_str).unwrap_or("unnamed");
-                let metric = alarm.get("MetricName").and_then(Value::as_str).unwrap_or("");
+                let name = alarm
+                    .get("AlarmName")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unnamed");
+                let metric = alarm
+                    .get("MetricName")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
                 let metric_lower = metric.to_ascii_lowercase();
-                let severity = if metric_lower.contains("cpu") || metric_lower.contains("disk") || metric_lower.contains("memory") { Severity::High } else { Severity::Medium };
+                let severity = if metric_lower.contains("cpu")
+                    || metric_lower.contains("disk")
+                    || metric_lower.contains("memory")
+                {
+                    Severity::High
+                } else {
+                    Severity::Medium
+                };
                 add_finding(report, format!("aws.cloudwatch.alarm.{name}"), severity, "utilization-and-capacity", format!("CloudWatch alarm is firing: {name}"), format!("Metric {metric:?} is in ALARM state."), "Inspect the time series and resource saturation/root cause; scale, right-size, repair, or tune thresholds through the customer's normal change process.", Some(name.to_string()));
             }
         }
@@ -410,12 +553,35 @@ async fn scan_aws(report: &mut ScanReport) {
     let today = Utc::now().date_naive();
     let start = today.with_day(1).unwrap_or(today);
     let end = today.succ_opt().unwrap_or(today);
-    let cost = run_cli("aws", vec![
-        "ce".into(), "get-cost-and-usage".into(), "--time-period".into(), format!("Start={},End={}", start.format("%Y-%m-%d"), end.format("%Y-%m-%d")), "--granularity".into(), "MONTHLY".into(), "--metrics".into(), "UnblendedCost".into(), "--output".into(), "json".into()
-    ]).await;
-    push_api_check(report, "budget-and-cost", &cost, |_| "read current-month AWS Cost Explorer spend".to_string());
+    let cost = run_cli(
+        "aws",
+        vec![
+            "ce".into(),
+            "get-cost-and-usage".into(),
+            "--time-period".into(),
+            format!(
+                "Start={},End={}",
+                start.format("%Y-%m-%d"),
+                end.format("%Y-%m-%d")
+            ),
+            "--granularity".into(),
+            "MONTHLY".into(),
+            "--metrics".into(),
+            "UnblendedCost".into(),
+            "--output".into(),
+            "json".into(),
+        ],
+    )
+    .await;
+    push_api_check(report, "budget-and-cost", &cost, |_| {
+        "read current-month AWS Cost Explorer spend".to_string()
+    });
     if let Ok(body) = &cost {
-        if let Some(amount) = body.pointer("/ResultsByTime/0/Total/UnblendedCost/Amount").and_then(Value::as_str).and_then(|value| value.parse::<f64>().ok()) {
+        if let Some(amount) = body
+            .pointer("/ResultsByTime/0/Total/UnblendedCost/Amount")
+            .and_then(Value::as_str)
+            .and_then(|value| value.parse::<f64>().ok())
+        {
             evaluate_budget(report, Provider::Aws, amount, "AWS current-month");
         }
     }
@@ -426,25 +592,72 @@ async fn scan_gcp(report: &mut ScanReport, scope: Option<&str>) {
     report.transport = "allowlisted gcloud API calls";
     let Some(project) = scope else {
         report.auth_status = "not-configured";
-        report.notes.push("Pass scope=<GCP project id>. The scanner never changes the active gcloud project.".to_string());
+        report.notes.push(
+            "Pass scope=<GCP project id>. The scanner never changes the active gcloud project."
+                .to_string(),
+        );
         return;
     };
     let project_arg = format!("--project={project}");
-    let project_body = run_cli("gcloud", vec!["projects".into(), "describe".into(), project.into(), "--format=json".into()]).await;
+    let project_body = run_cli(
+        "gcloud",
+        vec![
+            "projects".into(),
+            "describe".into(),
+            project.into(),
+            "--format=json".into(),
+        ],
+    )
+    .await;
     if project_body.is_err() {
         report.auth_status = "unavailable";
     } else {
         report.auth_status = "configured";
     }
-    push_api_check(report, "authentication", &project_body, |_| format!("GCP project {project} is readable"));
+    push_api_check(report, "authentication", &project_body, |_| {
+        format!("GCP project {project} is readable")
+    });
 
-    let instances = run_cli("gcloud", vec!["compute".into(), "instances".into(), "list".into(), project_arg.clone(), "--limit=100".into(), "--format=json".into()]).await;
-    push_api_check(report, "compute-inventory", &instances, |body| format!("inspected {} Compute Engine instances (capped at 100)", body.as_array().map_or(0, Vec::len)));
+    let instances = run_cli(
+        "gcloud",
+        vec![
+            "compute".into(),
+            "instances".into(),
+            "list".into(),
+            project_arg.clone(),
+            "--limit=100".into(),
+            "--format=json".into(),
+        ],
+    )
+    .await;
+    push_api_check(report, "compute-inventory", &instances, |body| {
+        format!(
+            "inspected {} Compute Engine instances (capped at 100)",
+            body.as_array().map_or(0, Vec::len)
+        )
+    });
     if let Ok(body) = &instances {
         if let Some(items) = body.as_array() {
             for instance in items {
-                let name = instance.get("name").and_then(Value::as_str).unwrap_or("unknown");
-                let has_external = instance.get("networkInterfaces").and_then(Value::as_array).is_some_and(|interfaces| interfaces.iter().any(|interface| interface.get("accessConfigs").and_then(Value::as_array).is_some_and(|configs| configs.iter().any(|config| config.get("natIP").and_then(Value::as_str).is_some()))));
+                let name = instance
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
+                let has_external = instance
+                    .get("networkInterfaces")
+                    .and_then(Value::as_array)
+                    .is_some_and(|interfaces| {
+                        interfaces.iter().any(|interface| {
+                            interface
+                                .get("accessConfigs")
+                                .and_then(Value::as_array)
+                                .is_some_and(|configs| {
+                                    configs.iter().any(|config| {
+                                        config.get("natIP").and_then(Value::as_str).is_some()
+                                    })
+                                })
+                        })
+                    });
                 if has_external {
                     add_finding(report, format!("gcp.compute.external-ip.{name}"), Severity::Medium, "security-baseline", "Compute Engine VM has an external IP", "At least one network interface has a NAT external address.", "Prefer private instances with controlled ingress/IAP/load balancing unless direct exposure is intentional.", Some(name.to_string()));
                 }
@@ -452,13 +665,36 @@ async fn scan_gcp(report: &mut ScanReport, scope: Option<&str>) {
         }
     }
 
-    let disks = run_cli("gcloud", vec!["compute".into(), "disks".into(), "list".into(), project_arg, "--limit=100".into(), "--format=json".into()]).await;
-    push_api_check(report, "storage-inventory", &disks, |body| format!("inspected {} persistent disks (capped at 100)", body.as_array().map_or(0, Vec::len)));
+    let disks = run_cli(
+        "gcloud",
+        vec![
+            "compute".into(),
+            "disks".into(),
+            "list".into(),
+            project_arg,
+            "--limit=100".into(),
+            "--format=json".into(),
+        ],
+    )
+    .await;
+    push_api_check(report, "storage-inventory", &disks, |body| {
+        format!(
+            "inspected {} persistent disks (capped at 100)",
+            body.as_array().map_or(0, Vec::len)
+        )
+    });
     if let Ok(body) = &disks {
         if let Some(items) = body.as_array() {
             for disk in items {
-                let name = disk.get("name").and_then(Value::as_str).unwrap_or("unknown");
-                if disk.get("users").and_then(Value::as_array).is_none_or(Vec::is_empty) {
+                let name = disk
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
+                if disk
+                    .get("users")
+                    .and_then(Value::as_array)
+                    .is_none_or(Vec::is_empty)
+                {
                     add_finding(report, format!("gcp.disk.unattached.{name}"), Severity::Low, "budget-and-cost", "Persistent disk appears unattached", "The disk has no users and can continue to incur storage charges.", "Confirm retention/snapshot requirements and remove it through the customer's normal change process if unused.", Some(name.to_string()));
                 }
             }
@@ -477,17 +713,60 @@ fn with_subscription(mut args: Vec<String>, scope: Option<&str>) -> Vec<String> 
 
 async fn scan_azure(report: &mut ScanReport, scope: Option<&str>) {
     report.transport = "allowlisted az CLI API calls";
-    let account = run_cli("az", with_subscription(vec!["account".into(), "show".into(), "-o".into(), "json".into()], scope)).await;
-    report.auth_status = if account.is_ok() { "configured" } else { "unavailable" };
-    push_api_check(report, "authentication", &account, |body| format!("Azure subscription {} is readable", body.get("id").and_then(Value::as_str).unwrap_or("current")));
+    let account = run_cli(
+        "az",
+        with_subscription(
+            vec!["account".into(), "show".into(), "-o".into(), "json".into()],
+            scope,
+        ),
+    )
+    .await;
+    report.auth_status = if account.is_ok() {
+        "configured"
+    } else {
+        "unavailable"
+    };
+    push_api_check(report, "authentication", &account, |body| {
+        format!(
+            "Azure subscription {} is readable",
+            body.get("id").and_then(Value::as_str).unwrap_or("current")
+        )
+    });
 
-    let vms = run_cli("az", with_subscription(vec!["vm".into(), "list".into(), "-d".into(), "--query".into(), "[0:100]".into(), "-o".into(), "json".into()], scope)).await;
-    push_api_check(report, "compute-inventory", &vms, |body| format!("inspected {} Azure VMs (capped at 100)", body.as_array().map_or(0, Vec::len)));
+    let vms = run_cli(
+        "az",
+        with_subscription(
+            vec![
+                "vm".into(),
+                "list".into(),
+                "-d".into(),
+                "--query".into(),
+                "[0:100]".into(),
+                "-o".into(),
+                "json".into(),
+            ],
+            scope,
+        ),
+    )
+    .await;
+    push_api_check(report, "compute-inventory", &vms, |body| {
+        format!(
+            "inspected {} Azure VMs (capped at 100)",
+            body.as_array().map_or(0, Vec::len)
+        )
+    });
     if let Ok(body) = &vms {
         if let Some(items) = body.as_array() {
             for vm in items {
-                let id = vm.get("id").and_then(Value::as_str).or_else(|| vm.get("name").and_then(Value::as_str)).unwrap_or("unknown");
-                let public_ip = vm.get("publicIps").and_then(Value::as_str).filter(|value| !value.is_empty());
+                let id = vm
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .or_else(|| vm.get("name").and_then(Value::as_str))
+                    .unwrap_or("unknown");
+                let public_ip = vm
+                    .get("publicIps")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.is_empty());
                 if public_ip.is_some() {
                     add_finding(report, format!("azure.vm.public-ip.{id}"), Severity::Medium, "security-baseline", "Azure VM has a public IP", "The VM detail response exposes a public IP.", "Prefer private networking plus controlled ingress/Bastion/load balancing unless public exposure is intentional.", Some(id.to_string()));
                 }
@@ -495,12 +774,35 @@ async fn scan_azure(report: &mut ScanReport, scope: Option<&str>) {
         }
     }
 
-    let disks = run_cli("az", with_subscription(vec!["disk".into(), "list".into(), "--query".into(), "[0:100]".into(), "-o".into(), "json".into()], scope)).await;
-    push_api_check(report, "storage-inventory", &disks, |body| format!("inspected {} managed disks (capped at 100)", body.as_array().map_or(0, Vec::len)));
+    let disks = run_cli(
+        "az",
+        with_subscription(
+            vec![
+                "disk".into(),
+                "list".into(),
+                "--query".into(),
+                "[0:100]".into(),
+                "-o".into(),
+                "json".into(),
+            ],
+            scope,
+        ),
+    )
+    .await;
+    push_api_check(report, "storage-inventory", &disks, |body| {
+        format!(
+            "inspected {} managed disks (capped at 100)",
+            body.as_array().map_or(0, Vec::len)
+        )
+    });
     if let Ok(body) = &disks {
         if let Some(items) = body.as_array() {
             for disk in items {
-                let id = disk.get("id").and_then(Value::as_str).or_else(|| disk.get("name").and_then(Value::as_str)).unwrap_or("unknown");
+                let id = disk
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .or_else(|| disk.get("name").and_then(Value::as_str))
+                    .unwrap_or("unknown");
                 if disk.get("managedBy").is_none_or(Value::is_null) {
                     add_finding(report, format!("azure.disk.unattached.{id}"), Severity::Low, "budget-and-cost", "Azure managed disk appears unattached", "managedBy is null.", "Confirm retention requirements and remove/archive it through the customer's normal change process if unused.", Some(id.to_string()));
                 }
@@ -508,24 +810,81 @@ async fn scan_azure(report: &mut ScanReport, scope: Option<&str>) {
         }
     }
 
-    let usage = run_cli("az", with_subscription(vec!["consumption".into(), "usage".into(), "list".into(), "--query".into(), "[0:500]".into(), "-o".into(), "json".into()], scope)).await;
-    push_api_check(report, "budget-and-cost", &usage, |body| format!("read {} consumption records (capped at 500)", body.as_array().map_or(0, Vec::len)));
+    let usage = run_cli(
+        "az",
+        with_subscription(
+            vec![
+                "consumption".into(),
+                "usage".into(),
+                "list".into(),
+                "--query".into(),
+                "[0:500]".into(),
+                "-o".into(),
+                "json".into(),
+            ],
+            scope,
+        ),
+    )
+    .await;
+    push_api_check(report, "budget-and-cost", &usage, |body| {
+        format!(
+            "read {} consumption records (capped at 500)",
+            body.as_array().map_or(0, Vec::len)
+        )
+    });
     if let Ok(body) = &usage {
         if let Some(items) = body.as_array() {
-            let spend: f64 = items.iter().filter_map(|item| item.get("pretaxCost").or_else(|| item.get("cost")).and_then(Value::as_f64)).sum();
+            let spend: f64 = items
+                .iter()
+                .filter_map(|item| {
+                    item.get("pretaxCost")
+                        .or_else(|| item.get("cost"))
+                        .and_then(Value::as_f64)
+                })
+                .sum();
             if spend > 0.0 {
                 evaluate_budget(report, Provider::Azure, spend, "Azure returned-period");
             }
         }
     }
 
-    let advisor = run_cli("az", with_subscription(vec!["advisor".into(), "recommendation".into(), "list".into(), "--query".into(), "[0:100]".into(), "-o".into(), "json".into()], scope)).await;
-    push_api_check(report, "best-practices", &advisor, |body| format!("read {} Azure Advisor recommendations (capped at 100)", body.as_array().map_or(0, Vec::len)));
+    let advisor = run_cli(
+        "az",
+        with_subscription(
+            vec![
+                "advisor".into(),
+                "recommendation".into(),
+                "list".into(),
+                "--query".into(),
+                "[0:100]".into(),
+                "-o".into(),
+                "json".into(),
+            ],
+            scope,
+        ),
+    )
+    .await;
+    push_api_check(report, "best-practices", &advisor, |body| {
+        format!(
+            "read {} Azure Advisor recommendations (capped at 100)",
+            body.as_array().map_or(0, Vec::len)
+        )
+    });
     if let Ok(body) = &advisor {
         if let Some(items) = body.as_array() {
             for (index, item) in items.iter().enumerate() {
-                let category = item.get("category").and_then(Value::as_str).unwrap_or("Advisor");
-                let title = item.pointer("/shortDescription/problem").and_then(Value::as_str).or_else(|| item.pointer("/shortDescription/solution").and_then(Value::as_str)).unwrap_or("Azure Advisor recommendation");
+                let category = item
+                    .get("category")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Advisor");
+                let title = item
+                    .pointer("/shortDescription/problem")
+                    .and_then(Value::as_str)
+                    .or_else(|| {
+                        item.pointer("/shortDescription/solution")
+                            .and_then(Value::as_str)
+                    })
+                    .unwrap_or("Azure Advisor recommendation");
                 let severity = match category.to_ascii_lowercase().as_str() {
                     "security" | "highavailability" => Severity::High,
                     "cost" | "performance" => Severity::Medium,
@@ -545,17 +904,53 @@ async fn scan_cloudflare(client: &reqwest::Client, report: &mut ScanReport) {
         return;
     };
     report.auth_status = "configured";
-    let accounts = get_json(client, "https://api.cloudflare.com/client/v4/accounts?per_page=50", &["api.cloudflare.com"], Some(&token), None).await;
-    push_api_check(report, "account-inventory", &accounts, |body| format!("{} Cloudflare accounts visible", array_len(body, "result")));
-    let zones = get_json(client, "https://api.cloudflare.com/client/v4/zones?per_page=100", &["api.cloudflare.com"], Some(&token), None).await;
-    push_api_check(report, "zone-inventory", &zones, |body| format!("{} Cloudflare zones visible (capped at 100)", array_len(body, "result")));
+    let accounts = get_json(
+        client,
+        "https://api.cloudflare.com/client/v4/accounts?per_page=50",
+        &["api.cloudflare.com"],
+        Some(&token),
+        None,
+    )
+    .await;
+    push_api_check(report, "account-inventory", &accounts, |body| {
+        format!("{} Cloudflare accounts visible", array_len(body, "result"))
+    });
+    let zones = get_json(
+        client,
+        "https://api.cloudflare.com/client/v4/zones?per_page=100",
+        &["api.cloudflare.com"],
+        Some(&token),
+        None,
+    )
+    .await;
+    push_api_check(report, "zone-inventory", &zones, |body| {
+        format!(
+            "{} Cloudflare zones visible (capped at 100)",
+            array_len(body, "result")
+        )
+    });
     if let Ok(body) = &zones {
         if let Some(items) = body.get("result").and_then(Value::as_array) {
             for zone in items {
-                let name = zone.get("name").and_then(Value::as_str).unwrap_or("unknown");
-                let status = zone.get("status").and_then(Value::as_str).unwrap_or("unknown");
+                let name = zone
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
+                let status = zone
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
                 if status != "active" {
-                    add_finding(report, format!("cloudflare.zone.status.{name}"), Severity::High, "reliability-and-backups", format!("Cloudflare zone {name} is not active"), format!("Zone status is {status:?}."), "Check nameserver delegation, zone activation, and account state.", Some(name.to_string()));
+                    add_finding(
+                        report,
+                        format!("cloudflare.zone.status.{name}"),
+                        Severity::High,
+                        "reliability-and-backups",
+                        format!("Cloudflare zone {name} is not active"),
+                        format!("Zone status is {status:?}."),
+                        "Check nameserver delegation, zone activation, and account state.",
+                        Some(name.to_string()),
+                    );
                 }
             }
         }
@@ -571,19 +966,49 @@ async fn scan_github(client: &reqwest::Client, report: &mut ScanReport, scope: O
         return;
     };
     let token = env_token("GITHUB_TOKEN").or_else(|| env_token("GH_TOKEN"));
-    report.auth_status = if token.is_some() { "configured" } else { "anonymous-public-only" };
-    let organization = get_json(client, &format!("https://api.github.com/orgs/{org}"), &["api.github.com"], token.as_deref(), Some("application/vnd.github+json")).await;
-    push_api_check(report, "organization", &organization, |_| format!("GitHub organization {org} is readable"));
-    let repos = get_json(client, &format!("https://api.github.com/orgs/{org}/repos?per_page=100&type=all"), &["api.github.com"], token.as_deref(), Some("application/vnd.github+json")).await;
-    push_api_check(report, "repository-inventory", &repos, |body| format!("{} repositories inspected (first page, max 100)", body.as_array().map_or(0, Vec::len)));
+    report.auth_status = if token.is_some() {
+        "configured"
+    } else {
+        "anonymous-public-only"
+    };
+    let organization = get_json(
+        client,
+        &format!("https://api.github.com/orgs/{org}"),
+        &["api.github.com"],
+        token.as_deref(),
+        Some("application/vnd.github+json"),
+    )
+    .await;
+    push_api_check(report, "organization", &organization, |_| {
+        format!("GitHub organization {org} is readable")
+    });
+    let repos = get_json(
+        client,
+        &format!("https://api.github.com/orgs/{org}/repos?per_page=100&type=all"),
+        &["api.github.com"],
+        token.as_deref(),
+        Some("application/vnd.github+json"),
+    )
+    .await;
+    push_api_check(report, "repository-inventory", &repos, |body| {
+        format!(
+            "{} repositories inspected (first page, max 100)",
+            body.as_array().map_or(0, Vec::len)
+        )
+    });
     if let Ok(body) = &repos {
         if let Some(items) = body.as_array() {
             for repo in items {
-                let name = repo.get("full_name").and_then(Value::as_str).unwrap_or("unknown");
+                let name = repo
+                    .get("full_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
                 if repo.get("archived").and_then(Value::as_bool) == Some(true) {
                     add_finding(report, format!("github.repo.archived.{name}"), Severity::Info, "resource-inventory", "Repository is archived", "Archived repositories are read-only and should be excluded from active delivery expectations.", "Confirm the repository is intentionally archived and remove it from active deployment/SLI inventories.", Some(name.to_string()));
                 }
-                if repo.get("has_discussions").and_then(Value::as_bool) == Some(false) && repo.get("has_issues").and_then(Value::as_bool) == Some(false) {
+                if repo.get("has_discussions").and_then(Value::as_bool) == Some(false)
+                    && repo.get("has_issues").and_then(Value::as_bool) == Some(false)
+                {
                     add_finding(report, format!("github.repo.no-tracker.{name}"), Severity::Low, "best-practices", "Repository has neither Issues nor Discussions enabled", "There is no repository-native issue/discussion intake surface.", "Confirm work tracking is intentionally external (for example Linear); otherwise enable a supported intake path.", Some(name.to_string()));
                 }
             }
@@ -593,7 +1018,10 @@ async fn scan_github(client: &reqwest::Client, report: &mut ScanReport, scope: O
 }
 
 fn parse_info(result: &Value) -> std::collections::HashMap<String, String> {
-    let text = result.get("result").and_then(Value::as_str).unwrap_or_default();
+    let text = result
+        .get("result")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     text.lines()
         .filter(|line| !line.starts_with('#'))
         .filter_map(|line| line.split_once(':'))
@@ -613,11 +1041,19 @@ async fn scan_upstash(client: &reqwest::Client, report: &mut ScanReport) {
     };
     let info_url = format!("{}/info", base.trim_end_matches('/'));
     let info = get_json(client, &info_url, &["upstash.io"], Some(&token), None).await;
-    report.auth_status = if info.is_ok() { "configured-read-only-token" } else { "error" };
-    push_api_check(report, "redis-info", &info, |_| "Upstash Redis INFO is readable with the read-only token".to_string());
+    report.auth_status = if info.is_ok() {
+        "configured-read-only-token"
+    } else {
+        "error"
+    };
+    push_api_check(report, "redis-info", &info, |_| {
+        "Upstash Redis INFO is readable with the read-only token".to_string()
+    });
     if let Ok(body) = &info {
         let parsed = parse_info(body);
-        let used = parsed.get("used_memory").and_then(|v| v.parse::<f64>().ok());
+        let used = parsed
+            .get("used_memory")
+            .and_then(|v| v.parse::<f64>().ok());
         let max = parsed.get("maxmemory").and_then(|v| v.parse::<f64>().ok());
         if let (Some(used), Some(max)) = (used, max) {
             if max > 0.0 {
@@ -629,7 +1065,11 @@ async fn scan_upstash(client: &reqwest::Client, report: &mut ScanReport) {
                 }
             }
         }
-        if parsed.get("evicted_keys").and_then(|v| v.parse::<u64>().ok()).is_some_and(|v| v > 0) {
+        if parsed
+            .get("evicted_keys")
+            .and_then(|v| v.parse::<u64>().ok())
+            .is_some_and(|v| v > 0)
+        {
             add_finding(report, "upstash.evictions", Severity::Medium, "utilization-and-capacity", "Redis reports evicted keys", "evicted_keys is non-zero.", "Review memory pressure, TTLs, eviction policy, and workload sizing; correlate with application cache misses/errors.", None);
         }
     }
@@ -642,15 +1082,46 @@ async fn scan_vercel(client: &reqwest::Client, report: &mut ScanReport) {
         return;
     };
     report.auth_status = "configured";
-    let projects = get_json(client, "https://api.vercel.com/v9/projects?limit=100", &["api.vercel.com"], Some(&token), None).await;
-    push_api_check(report, "project-inventory", &projects, |body| format!("{} Vercel projects inspected (capped at 100)", array_len(body, "projects")));
-    let deployments = get_json(client, "https://api.vercel.com/v6/deployments?limit=100", &["api.vercel.com"], Some(&token), None).await;
-    push_api_check(report, "deployment-health", &deployments, |body| format!("{} Vercel deployments inspected (capped at 100)", array_len(body, "deployments")));
+    let projects = get_json(
+        client,
+        "https://api.vercel.com/v9/projects?limit=100",
+        &["api.vercel.com"],
+        Some(&token),
+        None,
+    )
+    .await;
+    push_api_check(report, "project-inventory", &projects, |body| {
+        format!(
+            "{} Vercel projects inspected (capped at 100)",
+            array_len(body, "projects")
+        )
+    });
+    let deployments = get_json(
+        client,
+        "https://api.vercel.com/v6/deployments?limit=100",
+        &["api.vercel.com"],
+        Some(&token),
+        None,
+    )
+    .await;
+    push_api_check(report, "deployment-health", &deployments, |body| {
+        format!(
+            "{} Vercel deployments inspected (capped at 100)",
+            array_len(body, "deployments")
+        )
+    });
     if let Ok(body) = &deployments {
         if let Some(items) = body.get("deployments").and_then(Value::as_array) {
             for deployment in items {
-                let uid = deployment.get("uid").and_then(Value::as_str).unwrap_or("unknown");
-                let state = deployment.get("state").or_else(|| deployment.get("readyState")).and_then(Value::as_str).unwrap_or("unknown");
+                let uid = deployment
+                    .get("uid")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
+                let state = deployment
+                    .get("state")
+                    .or_else(|| deployment.get("readyState"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
                 if matches!(state, "ERROR" | "CANCELED") {
                     add_finding(report, format!("vercel.deployment.{uid}"), Severity::Medium, "reliability-and-backups", format!("Vercel deployment is {state}"), "A recent deployment did not become ready.", "Inspect build/runtime logs and rollback/redeploy through the customer's normal deployment workflow if needed.", Some(uid.to_string()));
                 }
@@ -662,40 +1133,103 @@ async fn scan_vercel(client: &reqwest::Client, report: &mut ScanReport) {
 async fn scan_digitalocean(client: &reqwest::Client, report: &mut ScanReport) {
     report.transport = "HTTPS GET only";
     let Some(token) = env_token("DIGITALOCEAN_READ_ONLY_TOKEN") else {
-        missing_auth(report, "DIGITALOCEAN_READ_ONLY_TOKEN", "Create a DigitalOcean Read Only token (api:read) or narrower resource :read scopes.");
+        missing_auth(
+            report,
+            "DIGITALOCEAN_READ_ONLY_TOKEN",
+            "Create a DigitalOcean Read Only token (api:read) or narrower resource :read scopes.",
+        );
         return;
     };
     report.auth_status = "configured-read-only-token";
-    let droplets = get_json(client, "https://api.digitalocean.com/v2/droplets?per_page=100", &["api.digitalocean.com"], Some(&token), None).await;
-    push_api_check(report, "compute-inventory", &droplets, |body| format!("{} Droplets inspected (capped at 100)", array_len(body, "droplets")));
+    let droplets = get_json(
+        client,
+        "https://api.digitalocean.com/v2/droplets?per_page=100",
+        &["api.digitalocean.com"],
+        Some(&token),
+        None,
+    )
+    .await;
+    push_api_check(report, "compute-inventory", &droplets, |body| {
+        format!(
+            "{} Droplets inspected (capped at 100)",
+            array_len(body, "droplets")
+        )
+    });
     if let Ok(body) = &droplets {
         if let Some(items) = body.get("droplets").and_then(Value::as_array) {
             for droplet in items {
-                let id = droplet.get("id").map(Value::to_string).unwrap_or_else(|| "unknown".to_string());
-                let backups = droplet.get("features").and_then(Value::as_array).is_some_and(|features| features.iter().any(|feature| feature.as_str() == Some("backups")));
+                let id = droplet
+                    .get("id")
+                    .map(Value::to_string)
+                    .unwrap_or_else(|| "unknown".to_string());
+                let backups = droplet
+                    .get("features")
+                    .and_then(Value::as_array)
+                    .is_some_and(|features| {
+                        features
+                            .iter()
+                            .any(|feature| feature.as_str() == Some("backups"))
+                    });
                 if !backups {
                     add_finding(report, format!("digitalocean.backups.{id}"), Severity::Medium, "reliability-and-backups", "Droplet backups are not enabled", "The Droplet feature list does not contain backups.", "Confirm recovery objectives; enable/provider-independent backups through normal change control when the workload is stateful or cannot be rebuilt quickly.", Some(id));
                 }
             }
         }
     }
-    let volumes = get_json(client, "https://api.digitalocean.com/v2/volumes?per_page=100", &["api.digitalocean.com"], Some(&token), None).await;
-    push_api_check(report, "storage-inventory", &volumes, |body| format!("{} block volumes inspected (capped at 100)", array_len(body, "volumes")));
+    let volumes = get_json(
+        client,
+        "https://api.digitalocean.com/v2/volumes?per_page=100",
+        &["api.digitalocean.com"],
+        Some(&token),
+        None,
+    )
+    .await;
+    push_api_check(report, "storage-inventory", &volumes, |body| {
+        format!(
+            "{} block volumes inspected (capped at 100)",
+            array_len(body, "volumes")
+        )
+    });
     if let Ok(body) = &volumes {
         if let Some(items) = body.get("volumes").and_then(Value::as_array) {
             for volume in items {
-                let id = volume.get("id").and_then(Value::as_str).unwrap_or("unknown");
-                if volume.get("droplet_ids").and_then(Value::as_array).is_none_or(Vec::is_empty) {
+                let id = volume
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
+                if volume
+                    .get("droplet_ids")
+                    .and_then(Value::as_array)
+                    .is_none_or(Vec::is_empty)
+                {
                     add_finding(report, format!("digitalocean.volume.unattached.{id}"), Severity::Low, "budget-and-cost", "Block volume appears unattached", "droplet_ids is empty.", "Confirm retention/snapshot needs and remove it through normal change control if unused.", Some(id.to_string()));
                 }
             }
         }
     }
-    let balance = get_json(client, "https://api.digitalocean.com/v2/customers/my/balance", &["api.digitalocean.com"], Some(&token), None).await;
-    push_api_check(report, "budget-and-cost", &balance, |_| "DigitalOcean billing balance is readable".to_string());
+    let balance = get_json(
+        client,
+        "https://api.digitalocean.com/v2/customers/my/balance",
+        &["api.digitalocean.com"],
+        Some(&token),
+        None,
+    )
+    .await;
+    push_api_check(report, "budget-and-cost", &balance, |_| {
+        "DigitalOcean billing balance is readable".to_string()
+    });
     if let Ok(body) = &balance {
-        if let Some(spend) = body.get("month_to_date_usage").and_then(Value::as_str).and_then(|v| v.parse::<f64>().ok()) {
-            evaluate_budget(report, Provider::DigitalOcean, spend, "DigitalOcean month-to-date");
+        if let Some(spend) = body
+            .get("month_to_date_usage")
+            .and_then(Value::as_str)
+            .and_then(|v| v.parse::<f64>().ok())
+        {
+            evaluate_budget(
+                report,
+                Provider::DigitalOcean,
+                spend,
+                "DigitalOcean month-to-date",
+            );
         }
     }
 }
@@ -707,8 +1241,20 @@ async fn scan_netlify(client: &reqwest::Client, report: &mut ScanReport) {
         return;
     };
     report.auth_status = "configured";
-    let sites = get_json(client, "https://api.netlify.com/api/v1/sites?per_page=100", &["api.netlify.com"], Some(&token), None).await;
-    push_api_check(report, "site-inventory", &sites, |body| format!("{} Netlify sites inspected (capped at 100)", body.as_array().map_or(0, Vec::len)));
+    let sites = get_json(
+        client,
+        "https://api.netlify.com/api/v1/sites?per_page=100",
+        &["api.netlify.com"],
+        Some(&token),
+        None,
+    )
+    .await;
+    push_api_check(report, "site-inventory", &sites, |body| {
+        format!(
+            "{} Netlify sites inspected (capped at 100)",
+            body.as_array().map_or(0, Vec::len)
+        )
+    });
     if let Ok(body) = &sites {
         if let Some(items) = body.as_array() {
             for site in items {
@@ -728,8 +1274,20 @@ async fn scan_render(client: &reqwest::Client, report: &mut ScanReport) {
         return;
     };
     report.auth_status = "configured";
-    let services = get_json(client, "https://api.render.com/v1/services?limit=100", &["api.render.com"], Some(&token), Some("application/json")).await;
-    push_api_check(report, "service-inventory", &services, |body| format!("{} Render service records inspected (capped at 100)", body.as_array().map_or(0, Vec::len)));
+    let services = get_json(
+        client,
+        "https://api.render.com/v1/services?limit=100",
+        &["api.render.com"],
+        Some(&token),
+        Some("application/json"),
+    )
+    .await;
+    push_api_check(report, "service-inventory", &services, |body| {
+        format!(
+            "{} Render service records inspected (capped at 100)",
+            body.as_array().map_or(0, Vec::len)
+        )
+    });
     report.notes.push("Render metrics/cost checks are reported only when their read APIs are available to the supplied audit identity; no deployment/restart/update endpoint exists in this adapter.".to_string());
 }
 
@@ -740,21 +1298,56 @@ async fn scan_fly(report: &mut ScanReport, scope: Option<&str>) {
         report.notes.push("Pass scope=<Fly.io organization slug>; the scanner invokes only `fly apps list --org ... --json`.".to_string());
         return;
     };
-    let apps = run_cli("fly", vec!["apps".into(), "list".into(), "--org".into(), org.into(), "--json".into()]).await;
-    report.auth_status = if apps.is_ok() { "configured" } else { "unavailable" };
-    push_api_check(report, "app-inventory", &apps, |body| format!("{} Fly.io apps visible", body.as_array().map_or(0, Vec::len)));
+    let apps = run_cli(
+        "fly",
+        vec![
+            "apps".into(),
+            "list".into(),
+            "--org".into(),
+            org.into(),
+            "--json".into(),
+        ],
+    )
+    .await;
+    report.auth_status = if apps.is_ok() {
+        "configured"
+    } else {
+        "unavailable"
+    };
+    push_api_check(report, "app-inventory", &apps, |body| {
+        format!(
+            "{} Fly.io apps visible",
+            body.as_array().map_or(0, Vec::len)
+        )
+    });
     report.notes.push("Per-app machine/volume/metric checks will only use additional exact read subcommands; this adapter deliberately has no deploy, scale, restart, secrets, or machine mutation command path.".to_string());
 }
 
 async fn scan_heroku(client: &reqwest::Client, report: &mut ScanReport) {
     report.transport = "HTTPS GET only";
     let Some(token) = env_token("HEROKU_READ_ONLY_TOKEN") else {
-        missing_auth(report, "HEROKU_READ_ONLY_TOKEN", "Use a Heroku OAuth token created with the read scope.");
+        missing_auth(
+            report,
+            "HEROKU_READ_ONLY_TOKEN",
+            "Use a Heroku OAuth token created with the read scope.",
+        );
         return;
     };
     report.auth_status = "configured-read-scope-token";
-    let apps = get_json(client, "https://api.heroku.com/apps", &["api.heroku.com"], Some(&token), Some("application/vnd.heroku+json; version=3")).await;
-    push_api_check(report, "app-inventory", &apps, |body| format!("{} Heroku apps visible", body.as_array().map_or(0, Vec::len)));
+    let apps = get_json(
+        client,
+        "https://api.heroku.com/apps",
+        &["api.heroku.com"],
+        Some(&token),
+        Some("application/vnd.heroku+json; version=3"),
+    )
+    .await;
+    push_api_check(report, "app-inventory", &apps, |body| {
+        format!(
+            "{} Heroku apps visible",
+            body.as_array().map_or(0, Vec::len)
+        )
+    });
     if let Ok(body) = &apps {
         if let Some(items) = body.as_array() {
             for app in items {
@@ -767,9 +1360,17 @@ async fn scan_heroku(client: &reqwest::Client, report: &mut ScanReport) {
     }
 }
 
-pub async fn scan(client: &reqwest::Client, provider: Provider, scope: Option<&str>) -> Result<ScanReport, String> {
+pub async fn scan(
+    client: &reqwest::Client,
+    provider: Provider,
+    scope: Option<&str>,
+) -> Result<ScanReport, String> {
     let scope = validate_scope(scope)?;
-    let transport = catalog().into_iter().find(|profile| profile.provider == provider.as_str()).map(|profile| profile.primary_transport).unwrap_or("read-only");
+    let transport = catalog()
+        .into_iter()
+        .find(|profile| profile.provider == provider.as_str())
+        .map(|profile| profile.primary_transport)
+        .unwrap_or("read-only");
     let mut report = blank_report(provider, scope, transport);
     match provider {
         Provider::Aws => scan_aws(&mut report).await,
@@ -790,12 +1391,20 @@ pub async fn scan(client: &reqwest::Client, provider: Provider, scope: Option<&s
 }
 
 fn default_console(provider: Provider) -> &'static str {
-    catalog().into_iter().find(|profile| profile.provider == provider.as_str()).map(|profile| profile.console).unwrap_or("https://canonical.cloud/")
+    catalog()
+        .into_iter()
+        .find(|profile| profile.provider == provider.as_str())
+        .map(|profile| profile.console)
+        .unwrap_or("https://canonical.cloud/")
 }
 
 fn console_host_allowed(provider: Provider, host: &str) -> bool {
     match provider {
-        Provider::Aws => host == "console.aws.amazon.com" || host.ends_with(".console.aws.amazon.com") || host.ends_with(".signin.aws.amazon.com"),
+        Provider::Aws => {
+            host == "console.aws.amazon.com"
+                || host.ends_with(".console.aws.amazon.com")
+                || host.ends_with(".signin.aws.amazon.com")
+        }
         Provider::Gcp => matches!(host, "console.cloud.google.com" | "accounts.google.com"),
         Provider::Azure => matches!(host, "portal.azure.com" | "login.microsoftonline.com"),
         Provider::Cloudflare => host == "dash.cloudflare.com",
@@ -811,21 +1420,32 @@ fn console_host_allowed(provider: Provider, host: &str) -> bool {
 }
 
 fn validate_console_url(provider: Provider, url: &str) -> Result<reqwest::Url, String> {
-    let parsed = reqwest::Url::parse(url).map_err(|error| format!("invalid console URL: {error}"))?;
+    let parsed =
+        reqwest::Url::parse(url).map_err(|error| format!("invalid console URL: {error}"))?;
     if parsed.scheme() != "https" {
         return Err("browser readiness URL must use https".to_string());
     }
-    let host = parsed.host_str().ok_or_else(|| "browser readiness URL has no host".to_string())?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "browser readiness URL has no host".to_string())?;
     if !console_host_allowed(provider, host) {
-        return Err(format!("console host {host:?} is not allowlisted for {}", provider.as_str()));
+        return Err(format!(
+            "console host {host:?} is not allowlisted for {}",
+            provider.as_str()
+        ));
     }
     Ok(parsed)
 }
 
-pub async fn browser_scan(provider: Provider, engine: BrowserEngine, url: Option<&str>) -> Result<Value, String> {
+pub async fn browser_scan(
+    provider: Provider,
+    engine: BrowserEngine,
+    url: Option<&str>,
+) -> Result<Value, String> {
     let target = url.unwrap_or_else(|| default_console(provider));
     let target = validate_console_url(provider, target)?;
-    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("browser/readiness-audit.mjs");
+    let script =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("browser/readiness-audit.mjs");
     let output = tokio::time::timeout(
         std::time::Duration::from_secs(45),
         Command::new("node")
@@ -844,12 +1464,17 @@ pub async fn browser_scan(provider: Provider, engine: BrowserEngine, url: Option
     .map_err(|_| "browser readiness helper timed out".to_string())?
     .map_err(|error| format!("failed to run browser helper: {error}"))?;
     if !output.status.success() {
-        return Err(format!("browser readiness helper exited {}: {}", output.status, truncate_text(&output.stderr, 1600)));
+        return Err(format!(
+            "browser readiness helper exited {}: {}",
+            output.status,
+            truncate_text(&output.stderr, 1600)
+        ));
     }
     if output.stdout.len() > 1024 * 1024 {
         return Err("browser readiness output exceeded 1 MiB".to_string());
     }
-    serde_json::from_slice(&output.stdout).map_err(|error| format!("browser readiness helper returned invalid JSON: {error}"))
+    serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("browser readiness helper returned invalid JSON: {error}"))
 }
 
 #[cfg(test)]
@@ -876,14 +1501,19 @@ mod tests {
 
     #[test]
     fn scope_validation_blocks_shellish_input_even_though_no_shell_is_used() {
-        assert_eq!(validate_scope(Some("my-project_123")).unwrap(), Some("my-project_123"));
-        assert!(validate_scope(Some("prod; rm -rf /" )).is_err());
+        assert_eq!(
+            validate_scope(Some("my-project_123")).unwrap(),
+            Some("my-project_123")
+        );
+        assert!(validate_scope(Some("prod; rm -rf /")).is_err());
         assert!(validate_scope(Some("$(whoami)")).is_err());
     }
 
     #[test]
     fn parses_upstash_info_without_echoing_tokens() {
-        let parsed = parse_info(&json!({"result":"# Memory\nused_memory:80\nmaxmemory:100\nevicted_keys:2\n"}));
+        let parsed = parse_info(
+            &json!({"result":"# Memory\nused_memory:80\nmaxmemory:100\nevicted_keys:2\n"}),
+        );
         assert_eq!(parsed.get("used_memory").map(String::as_str), Some("80"));
         assert_eq!(parsed.get("evicted_keys").map(String::as_str), Some("2"));
     }

@@ -19,8 +19,7 @@ const OPENCOST_TOKEN_ENV: &str = "CANONICAL_OPENCOST_BEARER_TOKEN";
 const CPU_QUERY: &str =
     r#"100 * (1 - avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))"#;
 const DISK_QUERY: &str = r#"100 * node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"}"#;
-const MEMORY_QUERY: &str =
-    "100 * node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes";
+const MEMORY_QUERY: &str = "100 * node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes";
 const DOWN_QUERY: &str = "up == 0";
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -89,12 +88,7 @@ fn thresholds() -> Thresholds {
     Thresholds {
         cpu_high_percent: threshold("CANONICAL_CPU_HIGH_PERCENT", 85.0, 1.0, 100.0),
         disk_free_low_percent: threshold("CANONICAL_DISK_FREE_LOW_PERCENT", 15.0, 0.1, 99.0),
-        memory_free_low_percent: threshold(
-            "CANONICAL_MEMORY_FREE_LOW_PERCENT",
-            15.0,
-            0.1,
-            99.0,
-        ),
+        memory_free_low_percent: threshold("CANONICAL_MEMORY_FREE_LOW_PERCENT", 15.0, 0.1, 99.0),
     }
 }
 
@@ -348,7 +342,10 @@ async fn scan_prometheus(
                 source: "prometheus",
                 check: "memory-available",
                 status: "observed",
-                summary: format!("{} host memory-availability series inspected", samples.len()),
+                summary: format!(
+                    "{} host memory-availability series inspected",
+                    samples.len()
+                ),
             });
             for sample in samples {
                 if sample.value <= threshold.memory_free_low_percent {
@@ -632,11 +629,7 @@ mod tests {
 
     #[test]
     fn remote_plain_http_is_rejected_but_loopback_http_is_allowed() {
-        assert!(validate_base_url(
-            "TEST_URL",
-            "http://prometheus.example.com:9090"
-        )
-        .is_err());
+        assert!(validate_base_url("TEST_URL", "http://prometheus.example.com:9090").is_err());
         assert!(validate_base_url("TEST_URL", "http://127.0.0.1:9090").is_ok());
         assert!(validate_base_url("TEST_URL", "http://localhost:9003").is_ok());
         assert!(validate_base_url("TEST_URL", "https://metrics.example.com").is_ok());

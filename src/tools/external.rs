@@ -94,11 +94,7 @@ impl ExternalProvider {
             Self::DigitalOcean => Some("digitalocean"),
             Self::AlibabaCloud => Some("aliyun"),
             Self::OracleCloud => Some("oci"),
-            Self::Github
-            | Self::Cloudflare
-            | Self::M365
-            | Self::Iac
-            | Self::MongoDbAtlas => None,
+            Self::Github | Self::Cloudflare | Self::M365 | Self::Iac | Self::MongoDbAtlas => None,
         }
     }
 }
@@ -261,7 +257,10 @@ fn timeout_secs() -> u64 {
 }
 
 fn truncate_text(bytes: &[u8], max_chars: usize) -> String {
-    String::from_utf8_lossy(bytes).chars().take(max_chars).collect()
+    String::from_utf8_lossy(bytes)
+        .chars()
+        .take(max_chars)
+        .collect()
 }
 
 async fn run_process(program: &str, args: &[String]) -> Result<ProcessOutput, String> {
@@ -426,7 +425,14 @@ fn walk_statuses(value: &Value, counts: &mut ExternalCounts, findings: &mut Vec<
                         counts.failed += 1;
                         let title = string_field(
                             object,
-                            &["title", "Title", "name", "check_name", "test_desc", "reason"],
+                            &[
+                                "title",
+                                "Title",
+                                "name",
+                                "check_name",
+                                "test_desc",
+                                "reason",
+                            ],
                         )
                         .unwrap_or("External tool reported a failing control");
                         let detail = string_field(
@@ -508,7 +514,11 @@ fn parse_trivy(value: &Value, counts: &mut ExternalCounts, findings: &mut Vec<Ex
     }
 }
 
-fn collect_checkov_failed(value: &Value, counts: &mut ExternalCounts, findings: &mut Vec<ExternalFinding>) {
+fn collect_checkov_failed(
+    value: &Value,
+    counts: &mut ExternalCounts,
+    findings: &mut Vec<ExternalFinding>,
+) {
     match value {
         Value::Array(values) => {
             for child in values {
@@ -528,7 +538,10 @@ fn collect_checkov_failed(value: &Value, counts: &mut ExternalCounts, findings: 
                 if let Some(failed) = results.get("failed_checks").and_then(Value::as_array) {
                     counts.failed += failed.len();
                     counts.total_records += failed.len();
-                    for row in failed.iter().take(MAX_FINDINGS.saturating_sub(findings.len())) {
+                    for row in failed
+                        .iter()
+                        .take(MAX_FINDINGS.saturating_sub(findings.len()))
+                    {
                         let row = row.as_object();
                         let id = row
                             .and_then(|row| string_field(row, &["check_id"]))
@@ -563,7 +576,11 @@ fn collect_checkov_failed(value: &Value, counts: &mut ExternalCounts, findings: 
     }
 }
 
-fn collect_kubeaudit(value: &Value, counts: &mut ExternalCounts, findings: &mut Vec<ExternalFinding>) {
+fn collect_kubeaudit(
+    value: &Value,
+    counts: &mut ExternalCounts,
+    findings: &mut Vec<ExternalFinding>,
+) {
     match value {
         Value::Array(values) => {
             for child in values {
@@ -571,15 +588,17 @@ fn collect_kubeaudit(value: &Value, counts: &mut ExternalCounts, findings: &mut 
             }
         }
         Value::Object(object) => {
-            if let Some(level) = string_field(object, &["level", "Level", "severity", "Severity"])
-            {
+            if let Some(level) = string_field(object, &["level", "Level", "severity", "Severity"]) {
                 counts.total_records += 1;
                 match level.to_ascii_lowercase().as_str() {
                     "error" => counts.failed += 1,
                     "warning" | "warn" => counts.warning += 1,
                     _ => counts.informational += 1,
                 }
-                if matches!(level.to_ascii_lowercase().as_str(), "error" | "warning" | "warn") {
+                if matches!(
+                    level.to_ascii_lowercase().as_str(),
+                    "error" | "warning" | "warn"
+                ) {
                     let title = string_field(
                         object,
                         &["auditResultName", "AuditResultName", "message", "Message"],
@@ -606,7 +625,11 @@ fn collect_kubeaudit(value: &Value, counts: &mut ExternalCounts, findings: &mut 
     }
 }
 
-fn parse_infracost(value: &Value, counts: &mut ExternalCounts, findings: &mut Vec<ExternalFinding>) {
+fn parse_infracost(
+    value: &Value,
+    counts: &mut ExternalCounts,
+    findings: &mut Vec<ExternalFinding>,
+) {
     let total = value
         .get("totalMonthlyCost")
         .and_then(Value::as_str)
@@ -659,11 +682,8 @@ fn summarize(tool: ExternalTool, value: &Value) -> (ExternalCounts, Vec<External
         | ExternalTool::ScoutSuite => walk_statuses(value, &mut counts, &mut findings),
     }
     if counts.total_records == 0 {
-        counts.total_records = counts.passed
-            + counts.failed
-            + counts.warning
-            + counts.skipped
-            + counts.informational;
+        counts.total_records =
+            counts.passed + counts.failed + counts.warning + counts.skipped + counts.informational;
     }
     (counts, findings)
 }
@@ -677,7 +697,8 @@ fn bounded_file(path: &Path) -> Result<Vec<u8>, String> {
             path.display()
         ));
     }
-    fs::read(path).map_err(|error| format!("cannot read generated report {}: {error}", path.display()))
+    fs::read(path)
+        .map_err(|error| format!("cannot read generated report {}: {error}", path.display()))
 }
 
 fn find_json_report(directory: &Path) -> Result<PathBuf, String> {
@@ -717,9 +738,9 @@ pub async fn scan(
     let (program, args, generated_dir): (&str, Vec<String>, Option<PathBuf>) = match tool {
         ExternalTool::Prowler => {
             let provider = provider.ok_or_else(|| "prowler requires provider".to_string())?;
-            let provider = provider
-                .prowler_name()
-                .ok_or_else(|| "selected provider is not supported by the Prowler adapter".to_string())?;
+            let provider = provider.prowler_name().ok_or_else(|| {
+                "selected provider is not supported by the Prowler adapter".to_string()
+            })?;
             let directory = temporary_report_dir(tool)?;
             let args = vec![
                 provider.to_string(),
@@ -734,9 +755,9 @@ pub async fn scan(
         }
         ExternalTool::ScoutSuite => {
             let provider = provider.ok_or_else(|| "scout-suite requires provider".to_string())?;
-            let provider = provider
-                .scout_name()
-                .ok_or_else(|| "selected provider is not supported by the ScoutSuite adapter".to_string())?;
+            let provider = provider.scout_name().ok_or_else(|| {
+                "selected provider is not supported by the ScoutSuite adapter".to_string()
+            })?;
             let directory = temporary_report_dir(tool)?;
             let mut args = vec![provider.to_string(), "--no-browser".to_string()];
             if provider == "azure" {
@@ -747,7 +768,8 @@ pub async fn scan(
             ("scout", args, Some(directory))
         }
         ExternalTool::Trivy => {
-            let target = validated_target(target.ok_or_else(|| "trivy requires target".to_string())?)?;
+            let target =
+                validated_target(target.ok_or_else(|| "trivy requires target".to_string())?)?;
             (
                 "trivy",
                 vec![
@@ -760,7 +782,8 @@ pub async fn scan(
             )
         }
         ExternalTool::Checkov => {
-            let target = validated_target(target.ok_or_else(|| "checkov requires target".to_string())?)?;
+            let target =
+                validated_target(target.ok_or_else(|| "checkov requires target".to_string())?)?;
             (
                 "checkov",
                 vec![
@@ -787,13 +810,13 @@ pub async fn scan(
             ]);
             ("kubescape", args, None)
         }
-        ExternalTool::KubeBench => (
-            "kube-bench",
-            vec!["--json".to_string()],
-            None,
-        ),
+        ExternalTool::KubeBench => ("kube-bench", vec!["--json".to_string()], None),
         ExternalTool::Kubeaudit => {
-            let mut args = vec!["all".to_string(), "--format".to_string(), "json".to_string()];
+            let mut args = vec![
+                "all".to_string(),
+                "--format".to_string(),
+                "json".to_string(),
+            ];
             if let Some(target) = target {
                 args.push("-f".to_string());
                 args.push(validated_target(target)?.display().to_string());
@@ -801,7 +824,8 @@ pub async fn scan(
             ("kubeaudit", args, None)
         }
         ExternalTool::Infracost => {
-            let target = validated_target(target.ok_or_else(|| "infracost requires target".to_string())?)?;
+            let target =
+                validated_target(target.ok_or_else(|| "infracost requires target".to_string())?)?;
             (
                 "infracost",
                 vec![

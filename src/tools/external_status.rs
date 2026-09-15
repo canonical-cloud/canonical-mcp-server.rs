@@ -60,8 +60,8 @@ async fn probe(
 
     let (installed, version) = match result {
         Ok(Ok(output)) => {
-            let version = bounded_version(&output.stdout)
-                .or_else(|| bounded_version(&output.stderr));
+            let version =
+                bounded_version(&output.stdout).or_else(|| bounded_version(&output.stderr));
             (output.status.success() || version.is_some(), version)
         }
         Ok(Err(_)) | Err(_) => (false, None),
@@ -94,7 +94,9 @@ mod tests {
         for (_, executable, args) in TOOLS {
             assert!(!executable.is_empty());
             assert!(!args.is_empty());
-            assert!(args.iter().all(|arg| !arg.contains(';') && !arg.contains("$(")));
+            assert!(args
+                .iter()
+                .all(|arg| !arg.contains(';') && !arg.contains("$(")));
         }
     }
 
