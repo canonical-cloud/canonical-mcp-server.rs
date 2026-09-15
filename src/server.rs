@@ -7,7 +7,9 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use crate::tools::{cloudflare, docs, domain, external, fiducia, github, health, k8s, readiness};
+use crate::tools::{
+    cloudflare, docs, domain, external, external_status, fiducia, github, health, k8s, readiness,
+};
 
 pub struct CanonicalMcp {
     /// Redirect-following client for token-less endpoints: RDAP (rdap.org
@@ -201,6 +203,15 @@ impl CanonicalMcp {
     }
 
     #[tool(
+        description = "Probe whether optional open-source scanners are installed and report their \
+                       versions using fixed local version commands only. No account target, customer \
+                       credential, URL, shell, or arbitrary argument is accepted."
+    )]
+    async fn external_tool_status(&self) -> Result<CallToolResult, ErrorData> {
+        json_result(&external_status::status().await)
+    }
+
+    #[tool(
         description = "Return the supported account-readiness provider matrix, credential names, \
                        least-privilege/read-only guidance, check families, and console URLs. \
                        This tool is offline and never touches a customer account."
@@ -353,13 +364,13 @@ impl ServerHandler for CanonicalMcp {
             .with_instructions(
                 "Operational and audit tooling for canonical.cloud. Use readiness_catalog for the \
                  twelve-provider least-privilege matrix; account_readiness for strict read-only \
-                 native account posture scans; external_tool_catalog and external_readiness for \
-                 allowlisted open-source cross-checks (Prowler, ScoutSuite, Trivy, Checkov, \
-                 Kubescape, kube-bench, kubeaudit, Infracost, Powerpipe); and browser_readiness \
-                 only as a console fallback using Playwright/Puppeteer with non-read requests \
-                 blocked. Existing stack tools include stack_ci_status, submodule_pins, \
-                 service_health, stack_docs, domain_status, cloudflare_dns, k8s_status, and \
-                 fiducia_status. Tokens are never logged or echoed.",
+                 native account posture scans; external_tool_catalog/external_tool_status and \
+                 external_readiness for allowlisted open-source cross-checks (Prowler, ScoutSuite, \
+                 Trivy, Checkov, Kubescape, kube-bench, kubeaudit, Infracost, Powerpipe); and \
+                 browser_readiness only as a console fallback using Playwright/Puppeteer with \
+                 non-read requests blocked. Existing stack tools include stack_ci_status, \
+                 submodule_pins, service_health, stack_docs, domain_status, cloudflare_dns, \
+                 k8s_status, and fiducia_status. Tokens are never logged or echoed.",
             )
     }
 }
@@ -385,6 +396,7 @@ mod tests {
                 "domain_status",
                 "external_readiness",
                 "external_tool_catalog",
+                "external_tool_status",
                 "fiducia_status",
                 "k8s_status",
                 "readiness_catalog",
