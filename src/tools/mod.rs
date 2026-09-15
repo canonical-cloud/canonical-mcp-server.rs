@@ -7,6 +7,7 @@ pub mod fiducia;
 pub mod github;
 pub mod health;
 pub mod k8s;
+pub mod observability;
 pub mod readiness;
 
 /// Render an error with its full source chain, e.g.
