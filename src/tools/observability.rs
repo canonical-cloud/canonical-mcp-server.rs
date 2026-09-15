@@ -98,13 +98,7 @@ fn thresholds() -> Thresholds {
     }
 }
 
-fn configured_base(name: &str) -> Result<Option<reqwest::Url>, String> {
-    let Some(raw) = std::env::var(name)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-    else {
-        return Ok(None);
-    };
+fn validate_base_url(name: &str, raw: &str) -> Result<reqwest::Url, String> {
     let mut url = reqwest::Url::parse(raw.trim())
         .map_err(|error| format!("{name} is not a valid URL: {error}"))?;
     let host = url
@@ -116,9 +110,22 @@ fn configured_base(name: &str) -> Result<Option<reqwest::Url>, String> {
             "{name} must use HTTPS unless the endpoint is loopback/port-forwarded"
         ));
     }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(format!("{name} must not embed credentials in the URL"));
+    }
     url.set_query(None);
     url.set_fragment(None);
-    Ok(Some(url))
+    Ok(url)
+}
+
+fn configured_base(name: &str) -> Result<Option<reqwest::Url>, String> {
+    let Some(raw) = std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return Ok(None);
+    };
+    validate_base_url(name, &raw).map(Some)
 }
 
 fn endpoint(base: &reqwest::Url, path: &str) -> Result<reqwest::Url, String> {
@@ -243,8 +250,7 @@ async fn prometheus_query(
     query: &'static str,
 ) -> Result<Vec<Sample>, String> {
     let url = endpoint(base, "/api/v1/query")?;
-    let body = get_json(client, url, PROMETHEUS_TOKEN_ENV, &[("query", query), ("limit", "500")])
-        .await?;
+    let body = get_json(client, url, PROMETHEUS_TOKEN_ENV, &[("query", query)]).await?;
     prometheus_samples(&body)
 }
 
@@ -580,6 +586,14 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn fixed_promql_has_normal_quotes_not_escape_characters() {
+        assert!(CPU_QUERY.contains("mode=\"idle\""));
+        assert!(!CPU_QUERY.contains("\\\""));
+        assert!(DISK_QUERY.contains("fstype!~\"tmpfs|overlay|squashfs\""));
+        assert!(!DISK_QUERY.contains("\\\""));
+    }
+
+    #[test]
     fn prometheus_vector_parser_extracts_numeric_samples() {
         let body = json!({
             "status": "success",
@@ -618,9 +632,14 @@ mod tests {
 
     #[test]
     fn remote_plain_http_is_rejected_but_loopback_http_is_allowed() {
-        let remote = reqwest::Url::parse("http://prometheus.example.com:9090").unwrap();
-        assert_ne!(remote.host_str(), Some("localhost"));
-        let loopback = reqwest::Url::parse("http://127.0.0.1:9090").unwrap();
-        assert_eq!(loopback.host_str(), Some("127.0.0.1"));
+        assert!(validate_base_url(
+            "TEST_URL",
+            "http://prometheus.example.com:9090"
+        )
+        .is_err());
+        assert!(validate_base_url("TEST_URL", "http://127.0.0.1:9090").is_ok());
+        assert!(validate_base_url("TEST_URL", "http://localhost:9003").is_ok());
+        assert!(validate_base_url("TEST_URL", "https://metrics.example.com").is_ok());
+        assert!(validate_base_url("TEST_URL", "https://user:secret@metrics.example.com").is_err());
     }
 }
