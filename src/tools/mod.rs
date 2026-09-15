@@ -2,6 +2,7 @@ pub mod cloudflare;
 pub mod docs;
 pub mod domain;
 pub mod external;
+pub mod external_status;
 pub mod fiducia;
 pub mod github;
 pub mod health;
