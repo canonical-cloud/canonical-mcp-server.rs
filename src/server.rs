@@ -7,7 +7,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use crate::tools::{cloudflare, docs, domain, fiducia, github, health, k8s, readiness};
+use crate::tools::{cloudflare, docs, domain, external, fiducia, github, health, k8s, readiness};
 
 pub struct CanonicalMcp {
     /// Redirect-following client for token-less endpoints: RDAP (rdap.org
@@ -115,6 +115,19 @@ pub struct BrowserReadinessParams {
     pub url: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ExternalReadinessParams {
+    /// Open-source scanner to execute through the fixed allowlisted adapter.
+    pub tool: external::ExternalTool,
+    /// Cloud/provider target for tools such as Prowler or ScoutSuite.
+    pub provider: Option<external::ExternalProvider>,
+    /// Local file/directory target for IaC or manifest scanners. The resolved
+    /// path must stay beneath CANONICAL_AUDIT_ROOT.
+    pub target: Option<String>,
+    /// Powerpipe benchmark id, for example aws_compliance.benchmark.cis_v400.
+    pub benchmark: Option<String>,
+}
+
 #[tool_router]
 impl CanonicalMcp {
     #[tool(
@@ -151,6 +164,40 @@ impl CanonicalMcp {
             Ok(report) => json_result(&report),
             Err(error) => Ok(tool_error(error)),
         }
+    }
+
+    #[tool(
+        description = "Run one fixed, allowlisted open-source audit engine: Prowler, ScoutSuite, \
+                       Trivy, Checkov, Kubescape, kube-bench, kubeaudit, Infracost, or Powerpipe. \
+                       There is no arbitrary executable/argument/shell primitive. Cloud tools \
+                       inherit already-configured read-only credentials; local target paths must \
+                       resolve beneath CANONICAL_AUDIT_ROOT. Output is bounded and normalized into \
+                       counts/findings where the upstream tool provides machine-readable JSON."
+    )]
+    async fn external_readiness(
+        &self,
+        Parameters(params): Parameters<ExternalReadinessParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match external::scan(
+            params.tool,
+            params.provider,
+            params.target.as_deref(),
+            params.benchmark.as_deref(),
+        )
+        .await
+        {
+            Ok(report) => json_result(&report),
+            Err(error) => Ok(tool_error(error)),
+        }
+    }
+
+    #[tool(
+        description = "Return the supported external open-source readiness engines, their fixed \
+                       invocation model, targets, output normalization, and account-access safety \
+                       notes. Offline only; executes no scanner and touches no customer account."
+    )]
+    async fn external_tool_catalog(&self) -> Result<CallToolResult, ErrorData> {
+        json_result(&external::catalog())
     }
 
     #[tool(
@@ -306,10 +353,13 @@ impl ServerHandler for CanonicalMcp {
             .with_instructions(
                 "Operational and audit tooling for canonical.cloud. Use readiness_catalog for the \
                  twelve-provider least-privilege matrix; account_readiness for strict read-only \
-                 account posture scans; and browser_readiness only as a console fallback using \
-                 Playwright/Puppeteer with non-read requests blocked. Existing stack tools include \
-                 stack_ci_status, submodule_pins, service_health, stack_docs, domain_status, \
-                 cloudflare_dns, k8s_status, and fiducia_status. Tokens are never logged or echoed.",
+                 native account posture scans; external_tool_catalog and external_readiness for \
+                 allowlisted open-source cross-checks (Prowler, ScoutSuite, Trivy, Checkov, \
+                 Kubescape, kube-bench, kubeaudit, Infracost, Powerpipe); and browser_readiness \
+                 only as a console fallback using Playwright/Puppeteer with non-read requests \
+                 blocked. Existing stack tools include stack_ci_status, submodule_pins, \
+                 service_health, stack_docs, domain_status, cloudflare_dns, k8s_status, and \
+                 fiducia_status. Tokens are never logged or echoed.",
             )
     }
 }
@@ -333,6 +383,8 @@ mod tests {
                 "browser_readiness",
                 "cloudflare_dns",
                 "domain_status",
+                "external_readiness",
+                "external_tool_catalog",
                 "fiducia_status",
                 "k8s_status",
                 "readiness_catalog",
@@ -385,5 +437,24 @@ mod tests {
             .to_string();
         assert!(browser_schema.contains("playwright"));
         assert!(browser_schema.contains("puppeteer"));
+    }
+
+    #[test]
+    fn external_schema_exposes_fixed_tool_and_provider_enums() {
+        let router = CanonicalMcp::tool_router();
+        let tools = router.list_all();
+        let external = tools
+            .iter()
+            .find(|tool| tool.name == "external_readiness")
+            .expect("external_readiness registered");
+        let schema = serde_json::to_value(&external.input_schema)
+            .expect("schema serializes")
+            .to_string();
+        assert!(schema.contains("prowler"));
+        assert!(schema.contains("checkov"));
+        assert!(schema.contains("kube-bench"));
+        assert!(schema.contains("infracost"));
+        assert!(schema.contains("cloudflare"));
+        assert!(!schema.contains("command"));
     }
 }
