@@ -8,7 +8,8 @@ use rmcp::{
 use serde::Deserialize;
 
 use crate::tools::{
-    cloudflare, docs, domain, external, external_status, fiducia, github, health, k8s, readiness,
+    cloudflare, docs, domain, external, external_status, fiducia, github, health, k8s,
+    observability, readiness,
 };
 
 pub struct CanonicalMcp {
@@ -17,8 +18,9 @@ pub struct CanonicalMcp {
     /// operator-supplied health URLs, and raw doc fetches.
     http: reqwest::Client,
     /// No-redirect client for every request that carries a bearer token
-    /// (GitHub, Cloudflare, fiducia, and account-readiness providers). These
-    /// APIs never legitimately redirect, and refusing to follow one prevents a
+    /// (GitHub, Cloudflare, fiducia, account-readiness providers, and
+    /// operator-configured Prometheus/OpenCost endpoints). These APIs never
+    /// legitimately redirect, and refusing to follow one prevents a
     /// hijacked/open redirect from replaying Authorization to another host.
     api_http: reqwest::Client,
     github: github::GitHubClient,
@@ -212,6 +214,21 @@ impl CanonicalMcp {
     }
 
     #[tool(
+        description = "Read-only operational readiness from operator-configured Prometheus and \
+                       OpenCost endpoints. Uses fixed GET queries only: five-minute host CPU, real \
+                       filesystem free-space percentage, available-memory percentage, Prometheus \
+                       scrape-target health, and month-window Kubernetes namespace cost allocation. \
+                       Endpoints and optional bearer tokens come only from environment configuration; \
+                       callers cannot supply arbitrary URLs or PromQL."
+    )]
+    async fn operational_readiness(&self) -> Result<CallToolResult, ErrorData> {
+        match observability::scan(&self.api_http).await {
+            Ok(report) => json_result(&report),
+            Err(error) => Ok(tool_error(error)),
+        }
+    }
+
+    #[tool(
         description = "Return the supported account-readiness provider matrix, credential names, \
                        least-privilege/read-only guidance, check families, and console URLs. \
                        This tool is offline and never touches a customer account."
@@ -364,13 +381,14 @@ impl ServerHandler for CanonicalMcp {
             .with_instructions(
                 "Operational and audit tooling for canonical.cloud. Use readiness_catalog for the \
                  twelve-provider least-privilege matrix; account_readiness for strict read-only \
-                 native account posture scans; external_tool_catalog/external_tool_status and \
-                 external_readiness for allowlisted open-source cross-checks (Prowler, ScoutSuite, \
-                 Trivy, Checkov, Kubescape, kube-bench, kubeaudit, Infracost, Powerpipe); and \
-                 browser_readiness only as a console fallback using Playwright/Puppeteer with \
-                 non-read requests blocked. Existing stack tools include stack_ci_status, \
-                 submodule_pins, service_health, stack_docs, domain_status, cloudflare_dns, \
-                 k8s_status, and fiducia_status. Tokens are never logged or echoed.",
+                 native account posture scans; operational_readiness for fixed Prometheus/OpenCost \
+                 CPU/disk/memory/target-health/cost evidence; external_tool_catalog, \
+                 external_tool_status and external_readiness for allowlisted open-source \
+                 cross-checks (Prowler, ScoutSuite, Trivy, Checkov, Kubescape, kube-bench, \
+                 kubeaudit, Infracost, Powerpipe); and browser_readiness only as a console fallback \
+                 using Playwright/Puppeteer with non-read requests blocked. Existing stack tools \
+                 include stack_ci_status, submodule_pins, service_health, stack_docs, domain_status, \
+                 cloudflare_dns, k8s_status, and fiducia_status. Tokens are never logged or echoed.",
             )
     }
 }
@@ -399,6 +417,7 @@ mod tests {
                 "external_tool_status",
                 "fiducia_status",
                 "k8s_status",
+                "operational_readiness",
                 "readiness_catalog",
                 "service_health",
                 "stack_ci_status",
