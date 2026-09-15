@@ -1,0 +1,95 @@
+name: readiness-one-shot-scope-fix
+
+on:
+  push:
+    branches: [feat/read-only-multicloud-readiness]
+    paths:
+      - .github/workflows/readiness-one-shot-scope-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/read-only-multicloud-readiness
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.97.0"
+          components: rustfmt
+      - name: Apply exact scope-validation hardening
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/tools/readiness.rs")
+          text = path.read_text()
+          old = '''fn validate_scope(scope: Option<&str>) -> Result<Option<&str>, String> {
+              let Some(scope) = scope else { return Ok(None) };
+              let trimmed = scope.trim();
+              if trimmed.is_empty() || trimmed.len() > 200 {
+                  return Err("scope must be 1..=200 characters".to_string());
+              }
+              if !trimmed
+                  .chars()
+                  .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '/' | '@'))
+              {
+                  return Err("scope contains unsupported characters".to_string());
+              }
+              Ok(Some(trimmed))
+          }
+          '''
+          new = '''fn validate_scope(scope: Option<&str>) -> Result<Option<&str>, String> {
+              let Some(scope) = scope else { return Ok(None) };
+              let trimmed = scope.trim();
+              if trimmed.is_empty() || trimmed.len() > 200 {
+                  return Err("scope must be 1..=200 characters".to_string());
+              }
+              if trimmed.starts_with('-')
+                  || !trimmed
+                      .chars()
+                      .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+              {
+                  return Err(
+                      "scope must be an identifier containing only ASCII letters, digits, '-' or '_' and may not begin with '-'"
+                          .to_string(),
+                  );
+              }
+              Ok(Some(trimmed))
+          }
+          '''
+          if old not in text:
+              raise SystemExit("exact validate_scope source did not match; refusing to patch")
+          path.write_text(text.replace(old, new, 1))
+          PY
+          cargo fmt --all
+          git diff --check
+          grep -q "assert!(validate_scope(Some(\"prod; rm -rf /\")).is_err())" src/tools/readiness.rs
+      - name: Commit hardened scope validator and remove one-shot workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/readiness-one-shot-scope-fix.yml
+          git add src/tools/readiness.rs
+          git commit -m "fix: tighten readiness scope identifiers"
+          askpass="$RUNNER_TEMP/git-askpass.sh"
+          cat >"$askpass" <<'SH'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$GH_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          SH
+          chmod 700 "$askpass"
+          GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 \
+            git push "https://github.com/${GITHUB_REPOSITORY}.git" HEAD:feat/read-only-multicloud-readiness
+          rm -f "$askpass"
