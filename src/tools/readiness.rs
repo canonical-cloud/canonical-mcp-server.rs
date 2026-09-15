@@ -165,11 +165,15 @@ fn validate_scope(scope: Option<&str>) -> Result<Option<&str>, String> {
     if trimmed.is_empty() || trimmed.len() > 200 {
         return Err("scope must be 1..=200 characters".to_string());
     }
-    if !trimmed
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '/' | '@'))
+    if trimmed.starts_with('-')
+        || !trimmed
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
     {
-        return Err("scope contains unsupported characters".to_string());
+        return Err(
+            "scope must be an identifier containing only ASCII letters, digits, '-' or '_' and may not begin with '-'"
+                .to_string(),
+        );
     }
     Ok(Some(trimmed))
 }
