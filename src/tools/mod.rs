@@ -5,6 +5,7 @@ pub mod fiducia;
 pub mod github;
 pub mod health;
 pub mod k8s;
+pub mod readiness;
 
 /// Render an error with its full source chain, e.g.
 /// `error sending request: dns error: failed to lookup address`.
