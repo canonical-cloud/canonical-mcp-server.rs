@@ -14,6 +14,7 @@ MCP client
    |
    +-- readiness_catalog ---------------------- offline provider matrix
    +-- account_readiness ---------------------- Canonical native collector
+   +-- operational_readiness ------------------ fixed Prometheus + OpenCost GETs
    +-- browser_readiness ---------------------- GET/HEAD/OPTIONS-only console fallback
    |
    +-- external_tool_catalog ------------------ offline OSS capability matrix
@@ -38,6 +39,8 @@ There is no `exec`, `shell`, `command`, generic argument array, arbitrary URL, o
 | Layer | Tool | What it adds | Customer-account access | Canonical adapter |
 | --- | --- | --- | --- | --- |
 | Native | Canonical `account_readiness` | Inventory, security baseline, backups, utilization evidence, spend/budget signals, provider-specific advice | Strict GET/fixed read CLI only | Built in |
+| Runtime telemetry | Prometheus | Actual CPU, filesystem free space, memory, exporter/target health | Operator-configured read endpoint | Fixed GET PromQL |
+| Kubernetes FinOps | OpenCost | Namespace allocation and budget evidence | Operator-configured read endpoint | Fixed GET allocation query |
 | Cloud security/compliance | Prowler | Large multi-cloud security and compliance rule catalog | Provider credentials; **must be read-only** | Fixed provider + JSON-OCSF output |
 | Independent cloud cross-check | ScoutSuite | Independent point-in-time attack-surface/configuration assessment | Provider credentials; **must be read-only** | Fixed provider, no browser, isolated report dir |
 | IaC misconfiguration | Trivy | Terraform/CloudFormation/Kubernetes/Helm/Dockerfile configuration checks | None for local config scan | `trivy config --format json` only |
@@ -45,14 +48,40 @@ There is no `exec`, `shell`, `command`, generic argument array, arbitrary URL, o
 | Kubernetes frameworks | Kubescape | NSA/CISA/CIS-style Kubernetes configuration and framework controls | Read-only kubeconfig for cluster mode | `scan` + JSON v2 only |
 | Kubernetes CIS | kube-bench | CIS Kubernetes benchmark | Local/node and cluster reads | `--json` only |
 | Kubernetes workload hardening | kubeaudit | Pod/workload security best-practice checks | Read-only kubeconfig for cluster mode | `all` + JSON only |
-| FinOps / shift-left cost | Infracost | Pre-deploy monthly cost estimates from IaC | Normally no cloud-account credentials | `breakdown --format json` only |
+| FinOps / shift-left cost | Infracost | Pre-deploy monthly cost estimates from IaC | None for normal IaC pricing | `breakdown --format json` only |
 | Benchmark-as-code | Powerpipe + Steampipe | Query-backed compliance/control packs across installed Steampipe connections | Connections **must be read-only** | Fixed benchmark id + JSON only |
 
 ### Useful adjacent tools not executed by the current adapter
 
 **CloudQuery** is valuable for copying provider inventory into a normalized analytical store. Its normal `sync` workflow necessarily writes to a destination database/object store, so it is not yet invoked from `external_readiness`. We can consume a pre-populated CloudQuery database later without weakening the "no customer mutation" rule.
 
-**OpenCost** is useful for live Kubernetes cost allocation. It exposes a read API and is a good candidate for a native HTTP collector once an OpenCost endpoint can be explicitly allowlisted per engagement. We should not add a generic URL parameter just to support it.
+**OpenCost** is integrated separately through `operational_readiness`, not as a child process. Its API is read-only for Canonical's fixed allocation query and complements Infracost's pre-deploy estimate.
+
+## Compliance parity
+
+Prowler's current open-source compliance catalog spans CIS benchmarks, NIST SP 800-53/800-171/CSF, CISA guidance, FedRAMP, PCI DSS, ISO/IEC 27001, SOC 2, GDPR, HIPAA, MITRE ATT&CK, AWS Well-Architected/FTR, NIS2 and additional frameworks. The exact framework keys vary by provider and Prowler release, so Canonical should discover the installed catalog from the pinned Prowler binary rather than hard-code marketing-era framework names.
+
+For readiness reporting, Canonical must distinguish:
+
+- **machine-observable pass/fail** from a provider/tool check;
+- **manual evidence** such as policies, training, contracts, incident exercises, access reviews, and management approvals;
+- **unknown/unavailable** because permissions or telemetry are missing;
+- **not applicable**, with a documented scope rationale.
+
+A Prowler/Powerpipe benchmark is evidence collection, not certification. Canonical should map external check IDs to its own framework/control evidence graph while preserving tool/version provenance.
+
+Recommended framework priorities for the Canonical product are:
+
+1. CIS cloud/Kubernetes benchmarks.
+2. NIST CSF + NIST SP 800-53.
+3. SOC 2 trust-services readiness.
+4. ISO/IEC 27001 readiness.
+5. PCI DSS where cardholder-data scope exists.
+6. HIPAA where protected-health-information scope exists.
+7. GDPR/NIS2 where the customer's legal/geographic scope requires them.
+8. Provider-native well-architected/security-framework checks.
+
+The control engine should allow multiple frameworks to point to one evidence record rather than re-running the same expensive provider query for every framework.
 
 ## Fail-closed external execution
 
@@ -100,6 +129,7 @@ Run:
 3. `external_readiness(tool=scout-suite, provider=aws)` when an independent implementation is useful.
 4. `external_readiness(tool=powerpipe, benchmark=<approved AWS benchmark>)` for a selected benchmark pack.
 5. Trivy + Checkov + Infracost against the infrastructure source tree if IaC is available.
+6. `operational_readiness` when Prometheus/OpenCost evidence is configured.
 
 ### GCP and Azure
 
@@ -113,11 +143,11 @@ Run native GitHub readiness, then Prowler/Powerpipe where configured. Scan repos
 
 Use the native `k8s_status` inventory plus:
 
+- `operational_readiness` for Prometheus CPU/disk/memory/target health and OpenCost;
 - Kubescape for framework/configuration controls;
 - kube-bench for CIS control evidence;
 - kubeaudit for workload security practices;
-- Trivy for Kubernetes/Helm manifests;
-- OpenCost as a future native read-only cost source.
+- Trivy for Kubernetes/Helm manifests.
 
 These tools overlap intentionally. Agreement increases confidence; disagreement should be retained as provenance rather than averaged away.
 
@@ -136,7 +166,7 @@ Canonical should preserve the original tool identity for every imported finding.
 - resource identifier when available;
 - scan timestamp;
 - parser/adapter version (the Canonical commit SHA in deployment metadata);
-- whether a finding came from live account state, local IaC, cluster state, or estimated cost.
+- whether a finding came from live account state, local IaC, cluster state, runtime telemetry, or estimated cost.
 
 Deduplication should group related evidence but not throw away provenance. For example, a public bucket found by both Canonical and Prowler should become one remediation topic with two evidence records, not one anonymous merged record.
 
