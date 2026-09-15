@@ -4,9 +4,16 @@
 
 ## Supported providers
 
-The initial matrix is AWS, GCP, Azure, Cloudflare, GitHub, Upstash Redis, Vercel, DigitalOcean, Netlify, Render, Fly.io, and Heroku.
+The native matrix is AWS, GCP, Azure, Cloudflare, GitHub, Upstash Redis, Vercel, DigitalOcean, Netlify, Render, Fly.io, and Heroku.
 
 Use the MCP `readiness_catalog` tool to retrieve the current provider/credential matrix. Use `account_readiness` for API/CLI evidence and `browser_readiness` only when a provider exposes important console-only evidence.
+
+Native account evidence is intentionally complemented by two independent layers:
+
+- `operational_readiness` reads fixed Prometheus/OpenCost signals for actual CPU, filesystem free space, memory pressure, target health, and Kubernetes cost allocation. See `docs/operational-readiness.md`.
+- `external_readiness` runs fixed adapters for Prowler, ScoutSuite, Trivy, Checkov, Kubescape, kube-bench, kubeaudit, Infracost, and Powerpipe. See `docs/open-source-parity.md`.
+
+The goal is not to collapse every engine into one opaque score. Canonical retains provenance so native provider evidence, open-source rule-engine findings, live metrics, IaC findings, and cost estimates can corroborate or contradict one another explicitly.
 
 ## Non-negotiable read-only contract
 
@@ -14,11 +21,13 @@ The implementation is fail-closed:
 
 - SaaS integrations have no generic HTTP method or URL primitive. They use hard-coded HTTPS API hostname allowlists and `GET` only.
 - AWS, GCP, Azure, and Fly.io integrations spawn exact read/list/describe CLI command families directly; no shell is invoked and no arbitrary command is accepted.
-- The MCP surface exposes scan/catalog/browser tools only; there is no deploy, create, update, delete, restart, rotate-secret, scale, or write tool.
+- The MCP surface exposes scan/catalog/status/browser tools only; there is no deploy, create, update, delete, restart, rotate-secret, scale, or write tool.
 - Responses are capped and bearer-token API calls use the MCP server's no-redirect client, preventing Authorization headers from following redirects to attacker-controlled hosts.
 - Tokens, cookies, and secret values are never returned as findings and must never be logged.
 - Browser automation performs zero clicks and zero form submissions. It aborts every request whose method is not GET, HEAD, or OPTIONS and blocks top-level navigation outside the provider's console/authentication hostname allowlist.
 - Browser mode therefore requires an already-authenticated Playwright storage state or Puppeteer profile where login itself needs a POST. This is deliberate: the scanner will not weaken the write barrier just to authenticate.
+- Prometheus/OpenCost endpoints are operator environment configuration, not MCP parameters; remote endpoints require HTTPS, fixed queries use GET only, and callers cannot supply PromQL.
+- External scanners use compiled executable/argument grammars. There is no generic shell/command/argument array. Local scan targets must stay under `CANONICAL_AUDIT_ROOT`.
 
 The strongest deployment model combines the code-level write barrier with provider-level least privilege. Where a provider offers a native read-only role or token, use it even though the scanner itself cannot issue a write.
 
@@ -39,6 +48,8 @@ The strongest deployment model combines the code-level write barrier with provid
 | Fly.io | flyctl credential | dedicated audit identity/token; only allowlisted read commands are invoked |
 | Heroku | `HEROKU_READ_ONLY_TOKEN` | OAuth token created with the `read` scope |
 
+External tools inherit their normal provider credentials. The Canonical wrapper prevents caller-controlled mutation commands, but it cannot make an overprivileged AWS/GCP/Azure/etc credential read-only. Provider-level least privilege remains mandatory.
+
 ## Finding families
 
 Every provider maps evidence into the same categories: identity/access, resource inventory, security baseline, reliability/backups, utilization/capacity, budget/cost, and observability.
@@ -58,11 +69,20 @@ Implemented checks include examples such as:
 
 ## Capacity and low-disk rules
 
-A scanner must distinguish **unknown** from **healthy**. Provisioned disk size is not filesystem free space. The scanner therefore does not infer low-disk health from EBS/Persistent Disk/Managed Disk allocation. It only raises disk-space findings from actual guest/agent metrics, alarms, or provider telemetry. When those metrics are absent, the report says so and recommends enabling the relevant read-only monitoring evidence.
+A scanner must distinguish **unknown** from **healthy**. Provisioned disk size is not filesystem free space. The native provider scanner therefore does not infer low-disk health from EBS/Persistent Disk/Managed Disk allocation.
 
-The same principle applies to CPU: a provider alarm or metrics API can support a utilization finding; inventory alone cannot.
+When `CANONICAL_PROMETHEUS_URL` is configured, `operational_readiness` closes that gap with real node-exporter evidence:
 
-## Budget thresholds
+- five-minute host CPU percentage;
+- filesystem available percentage from `node_filesystem_avail_bytes / node_filesystem_size_bytes`;
+- available-memory percentage;
+- `up == 0` scrape-target health.
+
+Default thresholds are CPU >=85% high / >=95% critical, filesystem free <=15% high / <=5% critical, and available memory <=15% high / <=5% critical. They are operator-configurable through the documented environment variables.
+
+When metrics are absent, the report says `unknown`; it does not fabricate health from inventory.
+
+## Budget and FinOps evidence
 
 Set a per-provider monthly budget with `CANONICAL_<PROVIDER>_MONTHLY_BUDGET_USD`, for example `CANONICAL_AWS_MONTHLY_BUDGET_USD=2500`. `CANONICAL_READINESS_MONTHLY_BUDGET_USD` is the fallback.
 
@@ -72,7 +92,24 @@ Where the provider supplies comparable spend evidence, the current thresholds ar
 - 85%: high
 - 100% or greater: critical
 
-The recommendation remains advisory: identify dominant cost centers, idle resources, egress/storage growth, autoscaling limits, and reservation/commitment opportunities. The scanner never deletes, downsizes, stops, or changes a resource.
+For Kubernetes, OpenCost adds month-window namespace allocation evidence and can compare it with `CANONICAL_KUBERNETES_MONTHLY_BUDGET_USD`. Infracost adds a different signal: pre-deploy monthly estimates from IaC. Use both actual allocation and shift-left estimates when available.
+
+The recommendation remains advisory: identify dominant cost centers, idle resources, egress/storage growth, autoscaling limits, requests/limits, and reservation/commitment opportunities. The scanner never deletes, downsizes, stops, or changes a resource.
+
+## Open-source cross-checks
+
+Use `external_tool_status` to discover which approved engines are installed and `external_tool_catalog` for their fixed invocation/safety matrix.
+
+Recommended layers include:
+
+- Prowler for broad multi-cloud security/compliance coverage;
+- ScoutSuite as an independent cloud configuration/attack-surface implementation;
+- Trivy + Checkov for overlapping IaC policy coverage;
+- Kubescape + kube-bench + kubeaudit for Kubernetes framework/CIS/workload coverage;
+- Infracost for IaC cost estimation;
+- Powerpipe/Steampipe for benchmark-as-code over read-only connections.
+
+Tool installation is deliberately not an MCP capability. Pin and verify external binaries in the build/devshell/container supply chain.
 
 ## Browser fallback
 
@@ -95,6 +132,12 @@ Console SPAs that require POST requests even for read-only GraphQL/RPC fetches m
 - `account_readiness`: `provider=gcp, scope=my-project-id` without changing the active gcloud project.
 - `account_readiness`: `provider=azure, scope=<subscription-id>` without changing the active subscription.
 - `account_readiness`: `provider=github, scope=customer-org`.
+- `operational_readiness`: no parameters; uses configured Prometheus/OpenCost endpoints if present.
+- `external_tool_status`: no parameters; fixed local version probes only.
+- `external_readiness`: `tool=prowler, provider=aws`.
+- `external_readiness`: `tool=checkov, target=infra/` where `infra/` resolves under `CANONICAL_AUDIT_ROOT`.
+- `external_readiness`: `tool=infracost, target=infra/terraform/`.
+- `external_readiness`: `tool=powerpipe, benchmark=aws_compliance.benchmark.cis_v400`.
 - `browser_readiness`: `provider=cloudflare, engine=playwright`; intended only for console-only evidence gaps.
 
-Tests must remain network-free. Provider response interpretation should stay in pure functions/fixtures; live account access belongs only in the thin orchestration layer.
+Tests must remain network-free. Provider/Prometheus/OpenCost/external response interpretation should stay in pure functions/fixtures; live account access belongs only in thin orchestration layers.
