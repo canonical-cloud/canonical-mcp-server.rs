@@ -7,7 +7,10 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use crate::tools::{cloudflare, docs, domain, fiducia, github, health, k8s};
+use crate::tools::{
+    cloudflare, docs, domain, external, external_status, fiducia, github, health, k8s,
+    observability, readiness,
+};
 
 pub struct CanonicalMcp {
     /// Redirect-following client for token-less endpoints: RDAP (rdap.org
@@ -15,9 +18,10 @@ pub struct CanonicalMcp {
     /// operator-supplied health URLs, and raw doc fetches.
     http: reqwest::Client,
     /// No-redirect client for every request that carries a bearer token
-    /// (GitHub, Cloudflare, fiducia). These APIs never legitimately redirect,
-    /// and refusing to follow one prevents a hijacked or open redirect from
-    /// replaying the `Authorization` header to an attacker-chosen host.
+    /// (GitHub, Cloudflare, fiducia, account-readiness providers, and
+    /// operator-configured Prometheus/OpenCost endpoints). These APIs never
+    /// legitimately redirect, and refusing to follow one prevents a
+    /// hijacked/open redirect from replaying Authorization to another host.
     api_http: reqwest::Client,
     github: github::GitHubClient,
     tool_router: ToolRouter<Self>,
@@ -95,8 +99,144 @@ pub struct K8sStatusParams {
     pub context: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AccountReadinessParams {
+    /// Provider to audit. Supported: aws, gcp, azure, cloudflare, github,
+    /// upstash, vercel, digital-ocean, netlify, render, fly-io, heroku.
+    pub provider: readiness::Provider,
+    /// Optional provider scope: GCP project id, Azure subscription id,
+    /// GitHub organization, or Fly.io organization. Omit where not needed.
+    pub scope: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct BrowserReadinessParams {
+    /// Provider console to inspect with strict read-only browser automation.
+    pub provider: readiness::Provider,
+    /// Browser engine: playwright or puppeteer.
+    pub engine: readiness::BrowserEngine,
+    /// Optional allowlisted console URL. Omit to use the provider dashboard.
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ExternalReadinessParams {
+    /// Open-source scanner to execute through the fixed allowlisted adapter.
+    pub tool: external::ExternalTool,
+    /// Cloud/provider target for tools such as Prowler or ScoutSuite.
+    pub provider: Option<external::ExternalProvider>,
+    /// Local file/directory target for IaC or manifest scanners. The resolved
+    /// path must stay beneath CANONICAL_AUDIT_ROOT.
+    pub target: Option<String>,
+    /// Powerpipe benchmark id, for example aws_compliance.benchmark.cis_v400.
+    pub benchmark: Option<String>,
+}
+
 #[tool_router]
 impl CanonicalMcp {
+    #[tool(
+        description = "Read-only cloud/account posture scan for AWS, GCP, Azure, Cloudflare, \
+                       GitHub, Upstash Redis, Vercel, DigitalOcean, Netlify, Render, Fly.io, \
+                       or Heroku. Collects inventory/security/reliability/utilization/cost evidence \
+                       using only allowlisted GET endpoints or exact read/list/describe CLI API \
+                       commands, then emits prioritized findings and remediation advice. The \
+                       scanner has no generic URL, HTTP method, shell, deploy, update, delete, \
+                       restart, secret-write, or resource-mutation primitive."
+    )]
+    async fn account_readiness(
+        &self,
+        Parameters(params): Parameters<AccountReadinessParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match readiness::scan(&self.api_http, params.provider, params.scope.as_deref()).await {
+            Ok(report) => json_result(&report),
+            Err(error) => Ok(tool_error(error)),
+        }
+    }
+
+    #[tool(
+        description = "Strict read-only browser fallback for provider consoles using Playwright \
+                       or Puppeteer. It performs no clicks or form submissions, aborts every \
+                       non-GET/HEAD/OPTIONS request, and blocks top-level navigation outside the \
+                       provider/authentication hostname allowlist. Intended for console-only \
+                       evidence gaps after API scanning."
+    )]
+    async fn browser_readiness(
+        &self,
+        Parameters(params): Parameters<BrowserReadinessParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match readiness::browser_scan(params.provider, params.engine, params.url.as_deref()).await {
+            Ok(report) => json_result(&report),
+            Err(error) => Ok(tool_error(error)),
+        }
+    }
+
+    #[tool(
+        description = "Run one fixed, allowlisted open-source audit engine: Prowler, ScoutSuite, \
+                       Trivy, Checkov, Kubescape, kube-bench, kubeaudit, Infracost, or Powerpipe. \
+                       There is no arbitrary executable/argument/shell primitive. Cloud tools \
+                       inherit already-configured read-only credentials; local target paths must \
+                       resolve beneath CANONICAL_AUDIT_ROOT. Output is bounded and normalized into \
+                       counts/findings where the upstream tool provides machine-readable JSON."
+    )]
+    async fn external_readiness(
+        &self,
+        Parameters(params): Parameters<ExternalReadinessParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match external::scan(
+            params.tool,
+            params.provider,
+            params.target.as_deref(),
+            params.benchmark.as_deref(),
+        )
+        .await
+        {
+            Ok(report) => json_result(&report),
+            Err(error) => Ok(tool_error(error)),
+        }
+    }
+
+    #[tool(
+        description = "Return the supported external open-source readiness engines, their fixed \
+                       invocation model, targets, output normalization, and account-access safety \
+                       notes. Offline only; executes no scanner and touches no customer account."
+    )]
+    async fn external_tool_catalog(&self) -> Result<CallToolResult, ErrorData> {
+        json_result(&external::catalog())
+    }
+
+    #[tool(
+        description = "Probe whether optional open-source scanners are installed and report their \
+                       versions using fixed local version commands only. No account target, customer \
+                       credential, URL, shell, or arbitrary argument is accepted."
+    )]
+    async fn external_tool_status(&self) -> Result<CallToolResult, ErrorData> {
+        json_result(&external_status::status().await)
+    }
+
+    #[tool(
+        description = "Read-only operational readiness from operator-configured Prometheus and \
+                       OpenCost endpoints. Uses fixed GET queries only: five-minute host CPU, real \
+                       filesystem free-space percentage, available-memory percentage, Prometheus \
+                       scrape-target health, and month-window Kubernetes namespace cost allocation. \
+                       Endpoints and optional bearer tokens come only from environment configuration; \
+                       callers cannot supply arbitrary URLs or PromQL."
+    )]
+    async fn operational_readiness(&self) -> Result<CallToolResult, ErrorData> {
+        match observability::scan(&self.api_http).await {
+            Ok(report) => json_result(&report),
+            Err(error) => Ok(tool_error(error)),
+        }
+    }
+
+    #[tool(
+        description = "Return the supported account-readiness provider matrix, credential names, \
+                       least-privilege/read-only guidance, check families, and console URLs. \
+                       This tool is offline and never touches a customer account."
+    )]
+    async fn readiness_catalog(&self) -> Result<CallToolResult, ErrorData> {
+        json_result(&readiness::catalog())
+    }
+
     #[tool(
         description = "Latest GitHub Actions runs for each canonical-cloud stack repository \
                        (canonical-monorepo, canonical-web-server.rs, canonical-marketing-site.web, \
@@ -239,15 +379,16 @@ impl ServerHandler for CanonicalMcp {
                 env!("CARGO_PKG_VERSION"),
             ))
             .with_instructions(
-                "Operational tooling for the canonical.cloud stack (GitHub org canonical-cloud). \
-                 Use stack_ci_status for CI health, submodule_pins to check monorepo pins, \
-                 service_health to probe a deployment, stack_docs for deploy/repo-boundary \
-                 documentation (fetched live) or org-map (embedded org/infra knowledge, \
-                 offline), domain_status for registrar (RDAP) and DNS delegation state, \
-                 cloudflare_dns to list zone records (needs CLOUDFLARE_API_TOKEN), \
-                 k8s_status for read-only cluster state via kubectl, and fiducia_status for \
-                 the shared secrets+locks/leases plane (needs FIDUCIA_URL + FIDUCIA_TOKEN). \
-                 Set GITHUB_TOKEN (or GH_TOKEN) for higher GitHub rate limits.",
+                "Operational and audit tooling for canonical.cloud. Use readiness_catalog for the \
+                 twelve-provider least-privilege matrix; account_readiness for strict read-only \
+                 native account posture scans; operational_readiness for fixed Prometheus/OpenCost \
+                 CPU/disk/memory/target-health/cost evidence; external_tool_catalog, \
+                 external_tool_status and external_readiness for allowlisted open-source \
+                 cross-checks (Prowler, ScoutSuite, Trivy, Checkov, Kubescape, kube-bench, \
+                 kubeaudit, Infracost, Powerpipe); and browser_readiness only as a console fallback \
+                 using Playwright/Puppeteer with non-read requests blocked. Existing stack tools \
+                 include stack_ci_status, submodule_pins, service_health, stack_docs, domain_status, \
+                 cloudflare_dns, k8s_status, and fiducia_status. Tokens are never logged or echoed.",
             )
     }
 }
@@ -267,10 +408,17 @@ mod tests {
         assert_eq!(
             names,
             vec![
+                "account_readiness",
+                "browser_readiness",
                 "cloudflare_dns",
                 "domain_status",
+                "external_readiness",
+                "external_tool_catalog",
+                "external_tool_status",
                 "fiducia_status",
                 "k8s_status",
+                "operational_readiness",
+                "readiness_catalog",
                 "service_health",
                 "stack_ci_status",
                 "stack_docs",
@@ -295,5 +443,49 @@ mod tests {
             "schema mentions repo-boundaries: {text}"
         );
         assert!(text.contains("org-map"), "schema mentions org-map: {text}");
+    }
+
+    #[test]
+    fn readiness_schema_exposes_provider_and_browser_enums() {
+        let router = CanonicalMcp::tool_router();
+        let tools = router.list_all();
+        let readiness = tools
+            .iter()
+            .find(|tool| tool.name == "account_readiness")
+            .expect("account_readiness registered");
+        let readiness_schema = serde_json::to_value(&readiness.input_schema)
+            .expect("schema serializes")
+            .to_string();
+        assert!(readiness_schema.contains("digital-ocean"));
+        assert!(readiness_schema.contains("upstash"));
+
+        let browser = tools
+            .iter()
+            .find(|tool| tool.name == "browser_readiness")
+            .expect("browser_readiness registered");
+        let browser_schema = serde_json::to_value(&browser.input_schema)
+            .expect("schema serializes")
+            .to_string();
+        assert!(browser_schema.contains("playwright"));
+        assert!(browser_schema.contains("puppeteer"));
+    }
+
+    #[test]
+    fn external_schema_exposes_fixed_tool_and_provider_enums() {
+        let router = CanonicalMcp::tool_router();
+        let tools = router.list_all();
+        let external = tools
+            .iter()
+            .find(|tool| tool.name == "external_readiness")
+            .expect("external_readiness registered");
+        let schema = serde_json::to_value(&external.input_schema)
+            .expect("schema serializes")
+            .to_string();
+        assert!(schema.contains("prowler"));
+        assert!(schema.contains("checkov"));
+        assert!(schema.contains("kube-bench"));
+        assert!(schema.contains("infracost"));
+        assert!(schema.contains("cloudflare"));
+        assert!(!schema.contains("command"));
     }
 }

@@ -4,43 +4,45 @@ Status: accepted
 
 ## Decision
 
-`canonical-mcp-server.rs` remains a local, stdio, read-only developer/operations MCP surface. It does **not** enter the customer readiness-report data plane and does not fetch or return customer report/evidence bodies.
+`canonical-mcp-server.rs` remains a local, stdio, read-only developer/operations MCP surface. It is not a customer-authenticated readiness service and does not enter the customer readiness-report/workspace data plane.
+
+Operator-initiated, read-only scans of explicitly configured provider accounts are allowed here. Those scans use operator-supplied, provider-scoped credentials to collect bounded infrastructure/account metadata and produce advisory posture findings. That provider access is an operations/audit capability; it does not establish customer identity, tenant membership, or authorization to customer report/workspace data.
 
 If customer-facing readiness MCP tools become a product requirement, they belong in a distinct customer MCP service/repository with its own Shared Auth audience, deployment boundary, rate limits, audit trail, typed contracts, and customer-data threat model. Admin/destructive readiness MCP capabilities remain a third, separately privileged boundary and are not added here.
 
-## Why
+## Trust boundaries
 
-The existing server is explicitly local developer/ops tooling and already has operational credentials for bounded GitHub, Cloudflare DNS, Kubernetes and fiducia visibility. Reusing those credentials or this trust model for customer identity would collapse unrelated authority planes. A customer report tool would require session/revocation semantics, tenant-derived authorization, report-content redaction/retention rules, and a deployed network service boundary that this repository intentionally does not have.
+The following invariants are mandatory:
 
-Keeping the split means:
-
-- ops credentials can never establish customer identity;
-- customer credentials cannot invoke infrastructure tools because this repository accepts no customer credential mode;
-- customer report/evidence bodies never enter local ops tool output, fixtures, logs or telemetry;
-- typed readiness routes remain owned by `canonical-interfaces` and generated clients by `canonical-clients`, ready for a future customer MCP consumer without changing this repository's authority;
-- destructive/admin actions stay outside the non-admin ops MCP boundary.
-
-## Allowed readiness visibility here
-
-Readiness-related tools may expose only operational, non-customer diagnostics that fit the existing read-only scope, such as service `/healthz`/`/readyz`, deployment/image identity, CI admission state, or aggregate component availability. They must not accept a tenant/report identifier that is treated as authorization and must not return report content, evidence payloads, R2 locators, signed URLs, database credentials, customer membership, or reviewer decisions.
+- provider credentials authorize only the provider reads that the local operator has deliberately configured; they never establish a Canonical customer principal or tenant;
+- this process accepts no customer session/cookie mode and no tenant/report identifier may be treated as authorization;
+- account-readiness tools may return bounded provider resource/account metadata and derived findings, but not Canonical customer report/evidence bodies, R2 locators, signed URLs, customer membership, reviewer decisions, or database credentials;
+- SaaS adapters remain GET-only against compiled HTTPS host allowlists;
+- CLI-backed adapters remain fixed read/list/describe command families with no shell or caller-controlled executable/argument array;
+- caller-supplied provider scopes are identifiers, not command fragments or URL paths: they are bounded, cannot begin with `-`, and accept only ASCII letters, digits, `-`, and `_`;
+- browser fallback remains observation-only: no clicks/forms, no mutation methods, and no cross-provider top-level navigation;
+- provider credentials should be genuinely read-only where the provider supports that. A code-level GET/read barrier does not make an overprivileged credential least-privilege;
+- destructive/admin actions stay outside this repository.
 
 ## MCP surface split
 
 | Surface | Repository/boundary | Identity | Data | Mutations |
 | --- | --- | --- | --- | --- |
-| Operations | this repository | local operator + read-scoped provider credentials | bounded operational metadata | none |
+| Operations/provider audit | this repository | local operator + read-scoped provider credentials | bounded infrastructure/account metadata and derived readiness findings | none |
 | Customer readiness | separate service/repository if productized | Shared Auth customer principal; tenant derived server-side | bounded customer report/workspace data through authenticated API/generated clients | only explicitly admitted customer workflow operations |
 | Admin readiness | separate admin MCP boundary if needed | privileged admin identity + step-up/capability | privileged review/reconciliation metadata | explicitly audited admin actions only |
 
 No credential is valid across these rows merely because the same human can possess both roles.
 
-## Contract dependencies for a future customer service
+## Customer-data boundary
 
-A customer-facing readiness MCP implementation must wait for and consume the shared typed readiness routes/contracts from `canonical-interfaces#74/#75` and generated client surface from `canonical-clients#40`. Tool parameters may narrow or navigate an already-authorized scope but never establish tenant authority. Cross-tenant guessed IDs, revoked sessions, result bounds, and non-disclosing denial shapes belong in system tests before deployment.
+This repository must not grow tools that retrieve Canonical readiness report bodies, evidence payloads, report content, customer membership, or reviewer decisions. Shared readiness routes remain owned by `canonical-interfaces` and generated clients by `canonical-clients`; a future customer-facing MCP service must consume those contracts behind Shared Auth and server-derived tenant authorization.
+
+Cross-tenant guessed IDs, revoked sessions, result bounds, and non-disclosing denial shapes belong in that separate service's system tests before deployment.
 
 ## Consequences
 
-- `canonical-mcp-server.rs#73` is resolved by choosing the ops-only option.
+- The multi-cloud account scanner is an ops/audit tool, even when an operator is assessing an account owned by or delegated from a customer.
+- The README and scanner documentation must describe operator-configured provider access rather than implying that this stdio process is a customer-facing application.
 - No readiness report/evidence retrieval tools are added here.
-- The README remains accurate: this process is local stdio developer/ops tooling, not a deployed customer application.
-- Any future request to add customer report bodies here first requires replacing this ADR with an explicit architecture decision and corresponding trust/deployment changes.
+- Any future request to make this process customer-facing first requires replacing this ADR with an explicit architecture decision and corresponding identity, deployment, authorization, retention, and threat-model changes.

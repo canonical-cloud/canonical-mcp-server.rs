@@ -1,10 +1,22 @@
 pub mod cloudflare;
 pub mod docs;
 pub mod domain;
+// The external runner builds a fixed note vector before moving it into the report.
+// Keep this exception local to the adapter while its report builder is refactored.
+#[allow(unused_mut)]
+pub mod external;
+pub mod external_status;
 pub mod fiducia;
 pub mod github;
 pub mod health;
 pub mod k8s;
+// Finding construction is intentionally explicit at call sites so audit recommendations,
+// evidence detail, category and resource identity remain visible together. Keep the lint
+// exception module-local rather than weakening the crate-wide clippy policy.
+#[allow(dead_code, clippy::too_many_arguments)]
+pub mod observability;
+#[allow(clippy::too_many_arguments)]
+pub mod readiness;
 
 /// Render an error with its full source chain, e.g.
 /// `error sending request: dns error: failed to lookup address`.
