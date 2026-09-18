@@ -1,0 +1,11 @@
+schema_version: ores.compose.v1
+project: canonical-mcp-server.rs
+allow_lazy_start: false
+
+services:
+  canonical-mcp-server.rs:
+    name: canonical-mcp-server.rs
+    runtime: host
+    build:
+      - ["cargo", "build", "--bins"]
+    command: ["./target/debug/canonical-mcp-server.rs"]
