@@ -5,6 +5,8 @@ edition = "2021"
 rust-version = "1.95"
 
 [dependencies]
+canonical-lib = { git = "https://github.com/canonical-cloud/canonical-lib-core", rev = "b95301a283e17f83eefc9b449068e33770e0181f" }
+canonical-orm-core = { git = "https://github.com/canonical-cloud/canonical-orm-core", rev = "fcf1ff71fa6f8b17f20ea5de98a591347293ee2d" }
 chrono = { version = "0.4.42", default-features = false, features = ["clock", "std"] }
 flags2env = { git = "https://github.com/ORESoftware/flags-2-env.git", rev = "377bff1a4e7424eb98377997a232ddc0fc700f59" }
 opentelemetry = "0.32"
