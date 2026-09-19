@@ -78,7 +78,14 @@ fn main_remains_a_thin_declarative_bootstrap() {
         .collect::<BTreeSet<_>>();
     assert_eq!(
         module_declarations,
-        BTreeSet::from(["env_map", "flags", "server", "telemetry", "tools"])
+        BTreeSet::from([
+            "env_map",
+            "flags",
+            "persistence",
+            "server",
+            "telemetry",
+            "tools"
+        ])
     );
     assert!(main.contains("flags::process_env_map()?"));
     assert!(main.contains("flags::log_filter(&env)?"));
@@ -86,7 +93,7 @@ fn main_remains_a_thin_declarative_bootstrap() {
     assert!(main.contains("server::CanonicalMcp::new()?"));
     assert!(main.contains(".serve(stdio())"));
     assert!(
-        main.lines().filter(|line| !line.trim().is_empty()).count() <= 26,
+        main.lines().filter(|line| !line.trim().is_empty()).count() <= 27,
         "main.rs accumulated application logic"
     );
 
