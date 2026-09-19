@@ -13,7 +13,8 @@ url = "https://github.com/canonical-cloud/canonical-mcp-server.rs"
 
 [dependencies]
 "canonical-cloud/canonical-clients" = "^0.1.0"
-"canonical-cloud/canonical-lib" = "^0.1.0"
+"canonical-cloud/canonical-lib-core" = "^0.2.0"
+"canonical-cloud/canonical-orm-core" = "^0.1.0"
 
 [build]
 command = "cargo build --release --locked --bin canonical-mcp-server"
