@@ -1,10 +1,10 @@
 schema_version: ores.compose.v1
-project: canonical-mcp-server.rs
+project: canonical-mcp-server
 allow_lazy_start: false
 
 services:
-  canonical-mcp-server.rs:
-    name: canonical-mcp-server.rs
+  canonical-mcp-server:
+    name: canonical-mcp-server
     runtime: host
     build:
       - ["cargo", "build", "--bins"]
