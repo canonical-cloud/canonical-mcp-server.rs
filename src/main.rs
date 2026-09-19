@@ -5,6 +5,7 @@
 
 mod env_map;
 mod flags;
+mod persistence;
 mod server;
 mod telemetry;
 mod tools;
@@ -17,7 +18,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let env = flags::process_env_map()?;
     let log_filter = flags::log_filter(&env)?;
     let _telemetry = telemetry::init("canonical-mcp-server", "canonical-cloud", log_filter);
-    tracing::info!(transport = "stdio", "starting MCP server");
+    let dual_orm_verified = persistence::verify_from_env().await?;
+    tracing::info!(
+        transport = "stdio",
+        dual_orm_verified,
+        tenant_table = canonical_lib::audit_data::table::TENANTS,
+        "starting MCP server"
+    );
     let server_span = tracing::info_span!("mcp.server", rpc.system = "mcp", transport = "stdio");
     let service = server::CanonicalMcp::new()?
         .serve(stdio())
