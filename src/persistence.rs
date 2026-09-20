@@ -11,12 +11,21 @@ pub(crate) async fn verify_from_env() -> Result<(), Box<dyn Error>> {
         .into());
     }
 
-    let Ok(database_url) = env::var(AUDIT_DATABASE_URL_ENV) else {
-        tracing::info!(
-            dual_orm_verified = false,
-            "CANONICAL_AUDIT_DATABASE_URL unset; persistence not configured"
-        );
-        return Ok(());
+    let database_url = match env::var(AUDIT_DATABASE_URL_ENV) {
+        Ok(value) => value,
+        Err(env::VarError::NotPresent) => {
+            tracing::info!(
+                dual_orm_verified = false,
+                "CANONICAL_AUDIT_DATABASE_URL unset; persistence not configured"
+            );
+            return Ok(());
+        }
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err(io::Error::other(
+                "CANONICAL_AUDIT_DATABASE_URL is configured but is not valid UTF-8",
+            )
+            .into());
+        }
     };
     if database_url.trim().is_empty() {
         return Err(io::Error::other("CANONICAL_AUDIT_DATABASE_URL must not be empty").into());
