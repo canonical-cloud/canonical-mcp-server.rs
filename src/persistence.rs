@@ -1,12 +1,19 @@
 use canonical_orm_core::{CapabilityProfile, DualOrmContext};
 use std::{env, error::Error, io};
 
+const ADMIN_DATABASE_URL_ENV: &str = "CANONICAL_ADMIN_DATABASE_URL";
 const AUDIT_DATABASE_URL_ENV: &str = "CANONICAL_AUDIT_DATABASE_URL";
 
 pub(crate) async fn verify_from_env() -> Result<(), Box<dyn Error>> {
     if env::var_os("DATABASE_URL").is_some() {
         return Err(io::Error::other(
             "generic DATABASE_URL is forbidden for MCP persistence; use CANONICAL_AUDIT_DATABASE_URL",
+        )
+        .into());
+    }
+    if env::var_os(ADMIN_DATABASE_URL_ENV).is_some() {
+        return Err(io::Error::other(
+            "CANONICAL_ADMIN_DATABASE_URL belongs to the isolated admin plane and is forbidden in MCP",
         )
         .into());
     }
