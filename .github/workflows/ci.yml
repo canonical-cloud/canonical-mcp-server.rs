@@ -34,12 +34,32 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Format
         run: cargo fmt --all -- --check
-      - name: Clippy
-        run: cargo clippy --locked --all-targets -- -D warnings
-      - name: Test
-        run: cargo test --locked --all-targets
-      - name: Release build
-        run: cargo build --locked --release
+      - name: Authenticated Rust verification
+        env:
+          CANONICAL_LIB_READ_TOKEN: ${{ secrets.CANONICAL_LIB_READ_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$CANONICAL_LIB_READ_TOKEN" ]]; then
+            echo '::error::CANONICAL_LIB_READ_TOKEN is required for clippy/test/release against private Canonical dependencies; source-only checks already passed.'
+            exit 1
+          fi
+          askpass="$RUNNER_TEMP/canonical-private-cargo-askpass.sh"
+          cat >"$askpass" <<'SH'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$CANONICAL_LIB_READ_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          SH
+          chmod 700 "$askpass"
+          export GIT_ASKPASS="$askpass"
+          export GIT_TERMINAL_PROMPT=0
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked --all-targets
+          cargo build --locked --release
 
   audit:
     runs-on: ubuntu-latest
