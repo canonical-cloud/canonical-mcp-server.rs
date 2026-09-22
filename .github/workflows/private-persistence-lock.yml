@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           lib_rev='6e833326ec2974912a4b66ebfc65f27b705abcba'
-          orm_rev='5547c4c2f5c177be83788b3976505a5c942a991b'
+          orm_rev='ad04984b227b0f2bcca1d8dc6ee858bd58a46f94'
           grep -Fq "canonical-lib = { git = \"https://github.com/canonical-cloud/canonical-lib-core\", rev = \"$lib_rev\" }" Cargo.toml
           grep -Fq "canonical-orm-core = { git = \"https://github.com/canonical-cloud/canonical-orm-core\", rev = \"$orm_rev\" }" Cargo.toml
           grep -Fq "source = \"git+https://github.com/canonical-cloud/canonical-lib-core?rev=$lib_rev#$lib_rev\"" Cargo.lock
