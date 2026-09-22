@@ -7,7 +7,7 @@ rust-version = "1.95"
 [dependencies]
 # Keep this revision identical to canonical-orm-core so shared persistence contract types have one crate identity.
 canonical-lib = { git = "https://github.com/canonical-cloud/canonical-lib-core", rev = "6e833326ec2974912a4b66ebfc65f27b705abcba" }
-canonical-orm-core = { git = "https://github.com/canonical-cloud/canonical-orm-core", rev = "ad04984b227b0f2bcca1d8dc6ee858bd58a46f94" }
+canonical-orm-core = { git = "https://github.com/canonical-cloud/canonical-orm-core", rev = "22dbf2d1270516b09fbf22f8876543c6f04f8bb3" }
 chrono = { version = "0.4.42", default-features = false, features = ["clock", "std"] }
 flags2env = { git = "https://github.com/ORESoftware/flags-2-env.git", rev = "377bff1a4e7424eb98377997a232ddc0fc700f59" }
 opentelemetry = "0.32"
