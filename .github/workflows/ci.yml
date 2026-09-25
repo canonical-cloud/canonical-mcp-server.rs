@@ -25,8 +25,8 @@ jobs:
         uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
         with:
           args: .github/workflows/ci.yml .github/workflows/web-smoke.yml
-      - name: Test strict read-only browser policy
-        run: node --test browser/readiness-audit.test.mjs
+      - name: Test strict read-only browser and private-Cargo policy
+        run: node --test browser/readiness-audit.test.mjs tests/private-cargo-read.test.mjs
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
           toolchain: "1.97.0"
@@ -35,11 +35,17 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --locked --all-targets -- -D warnings
+        env:
+          CANONICAL_LIB_READ_TOKEN: ${{ secrets.CANONICAL_LIB_READ_TOKEN }}
+        run: sh scripts/cargo-private-read.sh clippy --locked --all-targets -- -D warnings
       - name: Test
-        run: cargo test --locked --all-targets
+        env:
+          CANONICAL_LIB_READ_TOKEN: ${{ secrets.CANONICAL_LIB_READ_TOKEN }}
+        run: sh scripts/cargo-private-read.sh test --locked --all-targets
       - name: Release build
-        run: cargo build --locked --release
+        env:
+          CANONICAL_LIB_READ_TOKEN: ${{ secrets.CANONICAL_LIB_READ_TOKEN }}
+        run: sh scripts/cargo-private-read.sh build --locked --release
 
   audit:
     runs-on: ubuntu-latest
