@@ -37,15 +37,15 @@ jobs:
       - name: Clippy
         env:
           CANONICAL_LIB_READ_TOKEN: ${{ secrets.CANONICAL_LIB_READ_TOKEN }}
-        run: ./scripts/cargo-private-read.sh clippy --locked --all-targets -- -D warnings
+        run: sh ./scripts/cargo-private-read.sh clippy --locked --all-targets -- -D warnings
       - name: Test
         env:
           CANONICAL_LIB_READ_TOKEN: ${{ secrets.CANONICAL_LIB_READ_TOKEN }}
-        run: ./scripts/cargo-private-read.sh test --locked --all-targets
+        run: sh ./scripts/cargo-private-read.sh test --locked --all-targets
       - name: Release build
         env:
           CANONICAL_LIB_READ_TOKEN: ${{ secrets.CANONICAL_LIB_READ_TOKEN }}
-        run: ./scripts/cargo-private-read.sh build --locked --release
+        run: sh ./scripts/cargo-private-read.sh build --locked --release
 
   audit:
     runs-on: ubuntu-latest
