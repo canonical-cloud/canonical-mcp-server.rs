@@ -7,9 +7,7 @@ struct CapabilityState {
 }
 
 fn admitted(state: CapabilityState) -> bool {
-    return state.authenticated
-        && state.tenant_match
-        && (!state.mutating || state.admin);
+    return state.authenticated && state.tenant_match && (!state.mutating || state.admin);
 }
 
 fn imperative_oracle(state: CapabilityState) -> bool {
