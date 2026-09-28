@@ -1,3 +1,5 @@
+#![allow(clippy::needless_return)]
+
 #[derive(Clone, Copy, Debug)]
 struct CapabilityState {
     authenticated: bool,
