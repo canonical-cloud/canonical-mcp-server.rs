@@ -61,7 +61,10 @@ final class ActorStructuralRecordTransportTest {
     @Test
     void privateActorInvocationCopiesNestedOwnedRecords() {
         try (ActorRuntime runtime = new ActorRuntime()) {
-            var original = widerRecord();
+            // Invocation is generic in its payload. The actor transport
+            // intentionally re-materializes it as an immutable Map, not as
+            // the caller's mutable LinkedHashMap implementation class.
+            Map<String, Object> original = widerRecord();
             Map<String, Object> returned = runtime.invoke(
                     ActorRuntime.ActorKind.PRIVATE,
                     original,
