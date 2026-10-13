@@ -79,6 +79,89 @@ final class StructuralOwnershipBoundaryIntegrationTest {
     }
 
     @Test
+    void unresolvedNominalCannotBecomeActorMailboxPayload() {
+        String source = """
+                actor fnc dispatch(Phantom value): void { return; }
+                """;
+        var parsed = assertDoesNotThrow(() -> Parser.parse(source));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> TypeChecker.check(parsed));
+        assertTrue(error.getMessage().contains("unresolved/opaque nominal type 'Phantom'"),
+                error.getMessage());
+    }
+
+    @Test
+    void unresolvedNominalCannotHideInsideOwnedActorRecord() {
+        String source = """
+                actor fnc dispatch(record{foo: Phantom} value): void { return; }
+                """;
+        var parsed = assertDoesNotThrow(() -> Parser.parse(source));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> TypeChecker.check(parsed));
+        assertTrue(error.getMessage().contains("unresolved/opaque nominal type 'Phantom'"),
+                error.getMessage());
+    }
+
+    @Test
+    void unresolvedNominalCannotHideInsideActorSumType() {
+        String source = """
+                actor fnc dispatch(Option<Phantom> value): void { return; }
+                """;
+        var parsed = assertDoesNotThrow(() -> Parser.parse(source));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> TypeChecker.check(parsed));
+        assertTrue(error.getMessage().contains("unresolved/opaque nominal type 'Phantom'"),
+                error.getMessage());
+    }
+
+    @Test
+    void scalarActorIdentityRemainsSendable() {
+        String source = """
+                actor fnc dispatch(ActorId target): ActorId { return target; }
+                """;
+        var parsed = assertDoesNotThrow(() -> Parser.parse(source));
+        assertDoesNotThrow(() -> TypeChecker.check(parsed));
+    }
+
+    @Test
+    void typedActorReferenceIsCapabilityNotAClassByValue() {
+        String source = """
+                define actor Worker as
+                    receive(ActorMail<int> mail): void {
+                        self.end();
+                        return;
+                    }
+                end
+                actor fnc forward(ActorRef<Worker> worker): void { return; }
+                """;
+        var parsed = assertDoesNotThrow(() -> Parser.parse(source));
+        assertDoesNotThrow(() -> TypeChecker.check(parsed));
+    }
+
+    @Test
+    void untrustedActorCannotReceiveActorReference() {
+        String source = """
+                define actor Worker as
+                    receive(ActorMail<int> mail): void {
+                        self.end();
+                        return;
+                    }
+                end
+                define untrusted actor Inbox as
+                    receive(ActorMail<ActorRef<Worker>> mail): void {
+                        self.end();
+                        return;
+                    }
+                end
+                """;
+        var parsed = assertDoesNotThrow(() -> Parser.parse(source));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> TypeChecker.check(parsed));
+        assertTrue(error.getMessage().contains("untrusted actor"),
+                error.getMessage());
+    }
+
+    @Test
     void borrowingHiddenInsideOwnedShapeIsNotSendable() {
         String source = """
                 async fnc bad(record{foo: &int} v): void { return; }

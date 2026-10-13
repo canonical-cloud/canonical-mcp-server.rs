@@ -4585,6 +4585,29 @@ public final class TypeChecker {
             return;
         }
 
+        // Runtime scalar identities are explicitly represented and sendable.
+        // Do not treat an arbitrary missing class as another identity type.
+        if (Set.of("ActorId", "ActorGroupId", "ActorKind").contains(named.name())
+                && named.arguments().isEmpty()) {
+            return;
+        }
+        if (named.name().equals("ActorRef")) {
+            // An ActorRef is a typed capability, not an owned actor instance.
+            // Validate the target nominal actor rather than recursively
+            // trying to transport the actor's class as an owned value.
+            actorClassForRef(named);
+            if (actorKind == Ast.ActorKind.UNTRUSTED) {
+                throw new IllegalArgumentException(
+                        where + " cannot transport an ActorRef into an untrusted actor");
+            }
+            return;
+        }
+        if (named.name().equals("ActorGroupJoinCapability")
+                && named.arguments().isEmpty()
+                && actorKind != Ast.ActorKind.UNTRUSTED) {
+            return;
+        }
+
         for (Type argument : named.arguments()) {
             validateActorCallableBoundaryType(argument, actorKind, false, where + " type argument");
         }
@@ -4597,11 +4620,14 @@ public final class TypeChecker {
 
         Ast.ClassDecl klass = findClass(named.name());
         if (klass == null) {
-            // Runtime capability types (for example ActorId/ActorRef) are
-            // validated again by transport. Do not silently admit known
-            // mutable/suspending primitives above, but avoid rejecting opaque
-            // capability types solely because they have no source class body.
-            return;
+            // An imported/opaque nominal without a known, concrete runtime
+            // representation does not establish Sendable or a serializer.
+            // Otherwise a typo or unresolved type launders an arbitrary
+            // mutable host object through the static mailbox contract.
+            throw new IllegalArgumentException(
+                    where + " cannot transport unresolved/opaque nominal type '"
+                            + named.name() + "'; actor boundaries require a known"
+                            + " data-only type or an explicitly supported capability");
         }
         if (klass.actorKind() != Ast.ActorKind.NONE) {
             throw new IllegalArgumentException(
