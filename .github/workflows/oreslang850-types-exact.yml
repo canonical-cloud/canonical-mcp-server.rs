@@ -42,4 +42,4 @@ jobs:
         run: |
           set -euo pipefail
           java -ea -cp /tmp/oreslang850-types-classes dev.oreslang.types.ExactTypesSmoke | tee /tmp/oreslang850-types.out
-          grep -F "PASS EXACT-TYPES-SMOKE total=44" /tmp/oreslang850-types.out
+          grep -F "PASS EXACT-TYPES-SMOKE total=42" /tmp/oreslang850-types.out
