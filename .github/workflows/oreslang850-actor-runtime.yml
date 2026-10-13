@@ -1,0 +1,38 @@
+name: Oreslang 850 exact actor-runtime JUnit
+on:
+  push:
+    branches:
+      - ci/oreslang850-types-exact-20261013
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  actor-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout isolated source snapshot
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Setup pinned JDK21
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify every original ActorRuntime source and JUnit fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          while read -r expected path; do
+            actual="$(git hash-object "$path")"
+            if [ "$actual" != "$expected" ]; then
+              echo "Source SHA mismatch for $path: $actual != $expected" >&2
+              exit 1
+            fi
+          done < oreslang850-runtime/original-blobs.gitshas
+      - name: Execute exact ActorRuntime JUnit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn -B -ntp -f oreslang850-runtime/pom.xml test
