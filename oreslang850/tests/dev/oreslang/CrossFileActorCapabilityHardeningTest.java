@@ -70,6 +70,51 @@ final class CrossFileActorCapabilityHardeningTest {
     }
 
     @Test
+    void sameFileActorTypeDoesNotBecomeImplicitlyImportable() {
+        Ast.Program program = Parser.parse("""
+                define actor Worker as
+                    receive(ActorMail<int> mail): void {
+                        self.end();
+                        return;
+                    }
+                end
+                define actor Inbox as
+                    receive(ActorMail<ActorRef<Worker>> mail): void {
+                        self.end();
+                        return;
+                    }
+                end
+                """);
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> TypeChecker.checkTypes(program));
+        assertTrue(failure.getMessage().contains("same-file type"),
+                failure.getMessage());
+    }
+
+    @Test
+    void importedPrivateActorCannotAcquireLinkedClassAuthority() {
+        Ast.Program worker = Parser.parse("""
+                define actor Worker as
+                    receive(ActorMail<int> mail): void {
+                        self.end();
+                        return;
+                    }
+                end
+                """);
+        Ast.ClassDecl hidden = worker.modules().stream()
+                .flatMap(module -> module.declarations().stream())
+                .filter(decl -> decl instanceof Ast.ClassDecl)
+                .map(decl -> (Ast.ClassDecl) decl)
+                .findFirst().orElseThrow();
+        assertEquals(Ast.Visibility.PRIVATE, hidden.visibility());
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> TypeChecker.checkTypesWithImportedClasses(
+                        importer(""), Map.of("Worker", hidden), Map.of()));
+        assertTrue(failure.getMessage().contains("invalid linked public class"),
+                failure.getMessage());
+    }
+
+    @Test
     void unlinkedImportedActorRefNeverPassesAsUnknownNominal() {
         Ast.Program linked = importer("");
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
