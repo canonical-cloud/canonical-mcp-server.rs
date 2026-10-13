@@ -6,6 +6,6 @@ caee2e21bd7c5f001a57d996315de62576643c9b oreslang850/src/dev/oreslang/ast/Callab
 cb0113407d93a544d35258221c12525a1101ca07 oreslang850/src/dev/oreslang/parser/Parser.java
 85c24cb6a013a31e6752fd262bd6c22b52492346 oreslang850/src/dev/oreslang/parser/Lexer.java
 0923513e1c373e3b2398de5cbf87dfda0fedba63 oreslang850/src/dev/oreslang/parser/Token.java
-40756226ba7c1de83485656fe55a68796ba2d6d8 oreslang850/src/dev/oreslang/types/TypeChecker.java
+2cee10b02985d6439c2aa96b77697aa0d3570116 oreslang850/src/dev/oreslang/types/TypeChecker.java
 a9ca465b31c220103776bc3235d3cedb01184c3a oreslang850/src/dev/oreslang/types/OwnershipChecker.java
 01ac489cf6e1cbc86aabc76c817b8791560f38ed oreslang850/src/dev/oreslang/types/ReturnCleanupChecker.java

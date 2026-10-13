@@ -43,6 +43,8 @@ public final class TypeChecker {
     private final Map<String, LinkedHashMap<Integer, Ast.FunctionDecl>> functions = new HashMap<>();
     private final Map<String, String> unqualifiedFunctionOwners = new HashMap<>();
     private final Map<String, Ast.ClassDecl> classes = new HashMap<>();
+    /** Explicitly imported public class bodies supplied by the trusted linker. */
+    private final Set<String> linkedImportedClassNames = new HashSet<>();
     private final Map<String, Ast.InterfaceDecl> interfaces = new HashMap<>();
     private final Map<String, Ast.TypeAliasDecl> typeAliases = new HashMap<>();
     // Foreign aliases are visible only while expanding a public field in
@@ -141,6 +143,9 @@ public final class TypeChecker {
                         "linked public class was not uniquely imported: " + name);
             }
             checker.classes.put(name, declaration);
+            // This proof of an explicit cross-source import is not provided by
+            // source text alone. Only this checked linker path may grant it.
+            checker.linkedImportedClassNames.add(name);
             Map<String, Ast.TypeAliasDecl> aliases =
                     linkedAliases.getOrDefault(name, Map.of());
             for (Map.Entry<String, Ast.TypeAliasDecl> alias : aliases.entrySet()) {
@@ -1300,7 +1305,8 @@ public final class TypeChecker {
     }
 
     private void rejectUnimportedClassNamespace(Ast.ClassDecl target) {
-        if (!insideActorLexicalBoundary() || lexicalClassOrigin == target) return;
+        if (!insideActorLexicalBoundary() || lexicalClassOrigin == target
+                || linkedImportedClassNames.contains(target.name())) return;
         throw new IllegalArgumentException(
                 "actor '" + lexicalClassOrigin.name()
                         + "' cannot implicitly access sibling "
@@ -1314,7 +1320,8 @@ public final class TypeChecker {
 
         Ast.ClassDecl localClass = findClass(name);
         if (localClass != null) {
-            if (localClass == lexicalClassOrigin || isExplicitActorParent(localClass)) return;
+            if (localClass == lexicalClassOrigin || isExplicitActorParent(localClass)
+                    || linkedImportedClassNames.contains(name)) return;
             throw new IllegalArgumentException(
                     "actor '" + lexicalClassOrigin.name()
                             + "' cannot use same-file type '" + name
