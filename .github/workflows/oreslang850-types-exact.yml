@@ -79,3 +79,31 @@ jobs:
           java -ea -cp /tmp/oreslang850-compiler-classes dev.oreslang.types.ExactCompilerSmoke |
             tee /tmp/oreslang850-compiler.out
           grep -F "PASS EXACT-COMPILER-SMOKE total=11" /tmp/oreslang850-compiler.out
+
+  java-junit-exact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout isolated Oreslang test mirror
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Setup pinned JDK 21
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify source and JUnit fixtures match Oreslang PR850 blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for manifest in oreslang850/sources.gitshas oreslang850/tests.gitshas; do
+            while read -r expected path; do
+              test "$(git hash-object "$path")" = "$expected"
+            done < "$manifest"
+          done
+      - name: Execute original Oreslang parser/type/ownership JUnit regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn -B -ntp -f oreslang850/pom.xml test
