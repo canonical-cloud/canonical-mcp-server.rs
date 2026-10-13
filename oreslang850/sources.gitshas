@@ -1,0 +1,11 @@
+fc91c29b7316576dfb036edae12ef907e57897e6 oreslang850/src/dev/oreslang/types/Types.java
+930e58d4f1176d7d86fbfccbaa94607918b4f338 oreslang850/src/dev/oreslang/ast/Ast.java
+55ccefa62ce2afe5f6861351718376e39c67d272 oreslang850/src/dev/oreslang/ast/AnnotationExpander.java
+caee2e21bd7c5f001a57d996315de62576643c9b oreslang850/src/dev/oreslang/ast/CallableSelector.java
+94940022c3f94f1480b1e6921d645dec909a787d oreslang850/src/dev/oreslang/imports/ImportRules.java
+cb0113407d93a544d35258221c12525a1101ca07 oreslang850/src/dev/oreslang/parser/Parser.java
+85c24cb6a013a31e6752fd262bd6c22b52492346 oreslang850/src/dev/oreslang/parser/Lexer.java
+0923513e1c373e3b2398de5cbf87dfda0fedba63 oreslang850/src/dev/oreslang/parser/Token.java
+45de052f4611fd250262a6cdc211fe185dbe6f0b oreslang850/src/dev/oreslang/types/TypeChecker.java
+a9ca465b31c220103776bc3235d3cedb01184c3a oreslang850/src/dev/oreslang/types/OwnershipChecker.java
+01ac489cf6e1cbc86aabc76c817b8791560f38ed oreslang850/src/dev/oreslang/types/ReturnCleanupChecker.java

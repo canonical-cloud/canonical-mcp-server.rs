@@ -43,3 +43,39 @@ jobs:
           set -euo pipefail
           java -ea -cp /tmp/oreslang850-types-classes dev.oreslang.types.ExactTypesSmoke | tee /tmp/oreslang850-types.out
           grep -F "PASS EXACT-TYPES-SMOKE total=42" /tmp/oreslang850-types.out
+
+  java-compiler-exact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout isolated compiler source mirror
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Setup JDK 21 (pinned)
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Validate every pinned Oreslang source blob
+        shell: bash
+        run: |
+          set -euo pipefail
+          while read -r expected path; do
+            test "$(git hash-object "$path")" = "$expected"
+          done < oreslang850/sources.gitshas
+          echo "Exact Oreslang source blobs: verified"
+      - name: Compile real parser, TypeChecker and OwnershipChecker
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/oreslang850-compiler-classes
+          find oreslang850/src -name '*.java' -print0 |
+            xargs -0 javac --release 21 -d /tmp/oreslang850-compiler-classes
+      - name: Run exact-source compiler semantic fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -ea -cp /tmp/oreslang850-compiler-classes dev.oreslang.types.ExactCompilerSmoke |
+            tee /tmp/oreslang850-compiler.out
+          grep -F "PASS EXACT-COMPILER-SMOKE total=11" /tmp/oreslang850-compiler.out
