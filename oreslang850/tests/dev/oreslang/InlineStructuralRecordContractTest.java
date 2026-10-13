@@ -36,7 +36,12 @@ final class InlineStructuralRecordContractTest {
                 }
                 fnc ok(): int {
                     const value = infer struct{foo: 3, bar: "seven"};
-                    return byStruct(value) + byStructural(value) + byRecord(value);
+                    // Borrowed structural inspection may precede an owned move.
+                    // But by-value calls consume a move-only owned struct:
+                    // the final call must receive a fresh owned value.
+                    return byStructural(value)
+                            + byStruct(value)
+                            + byRecord(infer struct{foo: 3, bar: "seven"});
                 }
                 """)));
     }
