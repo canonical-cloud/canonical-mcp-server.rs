@@ -4612,10 +4612,16 @@ public final class TypeChecker {
             validateActorCallableBoundaryType(argument, actorKind, false, where + " type argument");
         }
 
-        // Built-in sum/container values are data-only when their arguments pass.
+        // Guest Option/Result/OptionUnwrapError values currently use private
+        // evaluator variant objects. ActorRuntime.freeze/isolateCopy do not
+        // have a canonical tagged-value codec for those objects, so admitting
+        // them here would defer a predictable failure to mailbox delivery.
+        // Do not reinterpret a nominal tagged variant as a data-only record.
         if (named.name().equals("Option") || named.name().equals("Result")
                 || named.name().equals("OptionUnwrapError")) {
-            return;
+            throw new IllegalArgumentException(
+                    where + " cannot transport " + named.name()
+                            + " until a canonical actor-safe tagged-value codec is implemented");
         }
 
         Ast.ClassDecl klass = findClass(named.name());
