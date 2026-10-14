@@ -169,3 +169,39 @@ jobs:
         run: |
           set -euo pipefail
           mvn -B -ntp -f oreslang850/runtime/pom.xml test
+
+  java-graalvm25-actor-native-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - name: Checkout exact ActorRuntime source mirror
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Setup pinned GraalVM JDK 25 with Native Image
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
+        with:
+          distribution: graalvm
+          java-version: '25'
+      - name: Check exact source blobs and native-image availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          native-image --version
+          while read -r expected path; do
+            test "$(git hash-object "$path")" = "$expected"
+          done < oreslang850/runtime/sources.gitshas
+      - name: Compile standalone actor runtime Native Image executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn -B -ntp -f oreslang850/runtime/pom.xml -DskipTests package dependency:build-classpath -Dmdep.outputFile="${PWD}/oreslang850/runtime/target/native-deps.txt"
+          CP="oreslang850/runtime/target/classes:$(cat oreslang850/runtime/target/native-deps.txt)"
+          native-image --no-fallback -O0 -J-Xmx4g --class-path "$CP" dev.oreslang.runtime.ActorRuntimeNativeSmoke /tmp/oreslang850-actor-native
+      - name: Execute native actor isolation smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/oreslang850-actor-native | tee /tmp/oreslang850-actor-native.txt
+          grep -Fx "PASS PR850_ACTOR_NATIVE_SMOKE" /tmp/oreslang850-actor-native.txt
