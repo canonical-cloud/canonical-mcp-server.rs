@@ -124,6 +124,10 @@ public final class TypeChecker {
             throw new IllegalArgumentException("linked public classes/aliases cannot be null");
         }
         program = AnnotationExpander.expand(program);
+        // Linked compilation must enforce the same return/finally/defer
+        // invariants as the normal type-checker path. A trusted import must
+        // never become a way to skip exit-cleanup validation.
+        ReturnCleanupChecker.check(program);
         TypeChecker checker = new TypeChecker();
         checker.validateImports(program);
         checker.collect(program);
