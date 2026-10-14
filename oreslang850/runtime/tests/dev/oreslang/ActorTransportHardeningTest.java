@@ -68,7 +68,7 @@ final class ActorTransportHardeningTest {
         try (ActorRuntime runtime = new ActorRuntime()) {
             var group = runtime.createActorGroup();
             var joinAuthority = group.joinCapability();
-            var target = runtime.<Object>spawnUntrusted(() -> (message, context) -> { });
+            var target = runtime.<Object>spawnUntrusted(actorContext -> (message, context) -> { });
 
             AtomicInteger reads = new AtomicInteger();
             List<Object> changing = changesAfterRead(7, joinAuthority, reads);

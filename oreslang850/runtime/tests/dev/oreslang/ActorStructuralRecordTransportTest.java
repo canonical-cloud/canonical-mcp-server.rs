@@ -89,7 +89,7 @@ final class ActorStructuralRecordTransportTest {
             var trustedRef = runtime.<Object>spawnShared(
                     () -> (message, context) -> { });
             var untrusted = runtime.<Object>spawnUntrusted(
-                    () -> (message, context) -> { });
+                    actorContext -> (message, context) -> { });
 
             // Transport must reject capability laundering through arbitrarily
             // nested, otherwise data-only record-shaped container values.
