@@ -39,7 +39,7 @@ public final class ActorRuntimeNativeSmoke {
         try (ActorRuntime runtime = new ActorRuntime()) {
             Map<String, Object> reply = runtime.invoke(
                     ActorRuntime.ActorKind.PRIVATE,
-                    Map.of("foo", 42),
+                    Map.<String, Object>of("foo", 42),
                     (message, context) -> message);
             if (!Integer.valueOf(42).equals(reply.get("foo"))) {
                 throw new AssertionError("private actor invocation lost payload");
