@@ -99,7 +99,7 @@ def measure(compiler, arguments, source, warmups, samples, timeout,
                 raise RuntimeError("benchmark inputs changed during sample")
             output_size = output.seek(0, os.SEEK_END)
             error_size = errors.seek(0, os.SEEK_END)
-            if output_size > max_output_bytes or error_size > max_output_bytes:
+            if output_size >= max_output_bytes or error_size >= max_output_bytes:
                 raise RuntimeError("compiler output exceeded output budget")
             if completed.returncode != 0:
                 if (os.name == "posix"
