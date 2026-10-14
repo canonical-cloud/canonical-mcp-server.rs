@@ -1,0 +1,17 @@
+name: Isolated Symbol Runner Budget Probe
+on:
+  push:
+    branches: [ci/symbol-budget-probe-20261013]
+  pull_request:
+    branches: [main]
+jobs:
+  hosted-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confirm runner can execute steps
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "CANONICAL_HOSTED_RUNNER_EXECUTED"
+          java -version
