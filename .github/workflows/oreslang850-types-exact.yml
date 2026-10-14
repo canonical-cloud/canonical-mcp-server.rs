@@ -133,3 +133,11 @@ jobs:
         run: |
           set -euo pipefail
           mvn -B -ntp -f oreslang850/runtime/pom.xml test
+      - name: Repeat exact-source actor lifecycle and isolation JUnit five times
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            mvn -B -ntp -f oreslang850/runtime/pom.xml test
+            echo "PASS current ActorRuntime suite repetition ${attempt}/5"
+          done
