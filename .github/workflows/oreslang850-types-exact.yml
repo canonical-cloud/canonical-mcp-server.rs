@@ -107,3 +107,29 @@ jobs:
         run: |
           set -euo pipefail
           mvn -B -ntp -f oreslang850/pom.xml test
+
+  java-actor-runtime-exact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout actor runtime mirror
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Setup pinned JDK 21
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify real actor runtime source and test hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          while read -r expected path; do
+            test "$(git hash-object "$path")" = "$expected"
+          done < oreslang850/runtime/sources.gitshas
+      - name: Execute real ActorRuntime transport JUnit classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn -B -ntp -f oreslang850/runtime/pom.xml test
