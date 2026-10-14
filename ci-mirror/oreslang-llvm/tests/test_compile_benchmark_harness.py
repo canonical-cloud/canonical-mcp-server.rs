@@ -57,5 +57,49 @@ class CompileBenchmarkHarnessTest(unittest.TestCase):
                 BENCH.measure(Path(sys.executable), [], source, 0, 0, 5)
 
 
+    def test_rejects_nonfinite_timeouts_and_excessive_iteration_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            source = directory / "file.ores"
+            source.write_text("fnc main(): int { return 1; }")
+            for timeout in (float("nan"), float("inf"), -1, 0):
+                with self.assertRaises(ValueError):
+                    BENCH.measure(Path(sys.executable), [], source, 0, 1, timeout)
+            for warmups, samples in ((-1, 1), (0, 0), (0, 1001), (101, 1)):
+                with self.assertRaises(ValueError):
+                    BENCH.measure(Path(sys.executable), [], source, warmups, samples, 1)
+            with self.assertRaises(ValueError):
+                BENCH.measure(Path(sys.executable), [], source, 0, 1, 1,
+                              max_output_bytes=0)
+
+    def test_output_budget_and_timeout_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            source = directory / "file.ores"
+            source.write_text("fnc main(): int { return 1; }")
+            noisy = directory / "noisy.py"
+            noisy.write_text("print('x' * 1024)\n", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "output budget"):
+                BENCH.measure(Path(sys.executable), [str(noisy)], source, 0, 1, 5,
+                              max_output_bytes=64)
+            asleep = directory / "asleep.py"
+            asleep.write_text("import time\ntime.sleep(2)\n", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "timed out"):
+                BENCH.measure(Path(sys.executable), [str(asleep)], source, 0, 1, 0.1)
+
+    def test_source_mutation_mid_sample_is_detected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            source = directory / "file.ores"
+            source.write_text("old", encoding="utf-8")
+            mutator = directory / "mutate.py"
+            mutator.write_text("from pathlib import Path\n"
+                               "import sys\n"
+                               "Path(sys.argv[1]).write_text('new')\n"
+                               "print('; this cannot be trusted')\n", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "inputs changed during sample"):
+                BENCH.measure(Path(sys.executable), [str(mutator)], source, 0, 1, 5)
+
+
 if __name__ == "__main__":
     unittest.main()
