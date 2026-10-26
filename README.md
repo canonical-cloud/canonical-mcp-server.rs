@@ -30,6 +30,7 @@ runtime and reqwest (rustls, no OpenSSL).
 | `cloudflare_dns` | `domain` default `canonical.cloud` | Read-only Cloudflare DNS record inventory |
 | `k8s_status` | `resource`; `namespace`, `context` optional | Read-only allowlisted `kubectl get … -o json` cluster state |
 | `fiducia_status` | — | Read-only required-secret *presence* and lock/lease health; never secret values |
+| `gmail_shadow_readiness` | — | Shadow-only Gmail sender-health evidence from fixed GETs: total Google storage quota, vacation responder, and send-as/reply routing; hash-only output and no send capability |
 
 See [`docs/account-readiness.md`](docs/account-readiness.md) for the native
 provider model, [`docs/open-source-parity.md`](docs/open-source-parity.md) for
@@ -56,6 +57,7 @@ The native account scanner is fail-closed:
 - No MCP tool can create, deploy, update, delete, restart, scale, rotate
   secrets, or otherwise mutate customer resources.
 - Tokens and secret values are never returned or logged.
+- Gmail shadow mode has no send/message endpoint and accepts no caller URL. It reads only vacation settings, send-as settings, and total Google storage quota. Gmail cannot prove SPF/DKIM/DMARC here, so sender authentication deliberately remains `unknown`/HOLD.
 
 The open-source adapter follows the same boundary at the orchestration layer:
 there is no generic executable, shell, argument array, URL, or environment
@@ -133,6 +135,8 @@ claude mcp add canonical-mcp -- \
 | `CANONICAL_PUPPETEER_USER_DATA_DIR` | optional browser fallback | Sensitive pre-authenticated Puppeteer profile directory |
 | `FIDUCIA_URL` + `FIDUCIA_TOKEN` | for `fiducia_status` | Base URL and read-scoped bearer token for fiducia.cloud |
 | `FIDUCIA_REQUIRED_SECRETS` | optional | Comma-separated secret names for `fiducia_status` to assert present |
+| `CANONICAL_GOOGLE_AUDIT_TOKEN` | for Gmail shadow evidence | Dedicated OAuth bearer used only against fixed Gmail settings GETs and Drive About; request `gmail.settings.basic` + `drive.metadata.readonly`; never returned/logged |
+| `CANONICAL_GMAIL_EXPECTED_SENDER_SHA256` | strongly recommended for Gmail shadow evidence | Lowercase SHA-256 of the exact intended send-as address; prevents the wrong authenticated Gmail identity from being treated as sender evidence |
 
 Native bearer-token HTTP requests use a no-redirect client and bounded response
 bodies. Public/token-less endpoints use the normal bounded client. External
@@ -151,6 +155,7 @@ barrier.
 - `src/tools/external.rs` — fixed open-source scanner adapters and parsers.
 - `src/tools/external_status.rs` — fixed scanner version/install probes.
 - `src/tools/github.rs` — GitHub client plus pure JSON summarization.
+- `src/tools/gmail_shadow.rs` — fixed read-only Gmail settings + Drive quota shadow evidence; hashes sender identity and never exposes mail content.
 - `src/tools/health.rs` — endpoint probing and body truncation.
 - `src/tools/docs.rs` — monorepo docs plus embedded org/infra knowledge.
 - `src/tools/domain.rs` — RDAP + DNS-over-HTTPS summarization and validation.
