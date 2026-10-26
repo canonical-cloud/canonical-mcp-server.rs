@@ -8,8 +8,8 @@ use rmcp::{
 use serde::Deserialize;
 
 use crate::tools::{
-    cloudflare, docs, domain, external, external_status, fiducia, github, health, k8s,
-    observability, readiness,
+    cloudflare, docs, domain, external, external_status, fiducia, github, gmail_shadow, health,
+    k8s, observability, readiness,
 };
 
 pub struct CanonicalMcp {
@@ -349,6 +349,22 @@ impl CanonicalMcp {
     }
 
     #[tool(
+        description = "Shadow-only Canonical Plus Gmail sender-health evidence. Uses fixed GET \
+                       requests only: Gmail vacation settings, Gmail send-as settings, and Google \
+                       Drive total storage quota. Returns only hashes/quotas/assurance states; never \
+                       raw addresses, messages, credentials, or send capability. Requires \
+                       CANONICAL_GOOGLE_AUDIT_TOKEN and optionally pins the sender with \
+                       CANONICAL_GMAIL_EXPECTED_SENDER_SHA256. This tool intentionally cannot prove \
+                       SPF/DKIM/DMARC, so it remains HOLD until separate sender-auth evidence exists."
+    )]
+    async fn gmail_shadow_readiness(&self) -> Result<CallToolResult, ErrorData> {
+        match gmail_shadow::scan(&self.api_http).await {
+            Ok(report) => json_result(&report),
+            Err(error) => Ok(tool_error(error)),
+        }
+    }
+
+    #[tool(
         description = "Read-only Kubernetes status via `kubectl get` (nodes, pods, deployments, \
                        services, or ingresses), summarized to name/namespace/status/age rows. \
                        Optional namespace and kubeconfig context. Never mutates the cluster."
@@ -388,7 +404,8 @@ impl ServerHandler for CanonicalMcp {
                  kubeaudit, Infracost, Powerpipe); and browser_readiness only as a console fallback \
                  using Playwright/Puppeteer with non-read requests blocked. Existing stack tools \
                  include stack_ci_status, submodule_pins, service_health, stack_docs, domain_status, \
-                 cloudflare_dns, k8s_status, and fiducia_status. Tokens are never logged or echoed.",
+                 cloudflare_dns, k8s_status, fiducia_status, and gmail_shadow_readiness for fixed \
+                 read-only Google sender-health evidence. Tokens are never logged or echoed.",
             )
     }
 }
@@ -416,6 +433,7 @@ mod tests {
                 "external_tool_catalog",
                 "external_tool_status",
                 "fiducia_status",
+                "gmail_shadow_readiness",
                 "k8s_status",
                 "operational_readiness",
                 "readiness_catalog",
