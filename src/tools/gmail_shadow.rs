@@ -18,10 +18,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::error_chain;
 
-const VACATION_URL: &str =
-    "https://gmail.googleapis.com/gmail/v1/users/me/settings/vacation";
-const SEND_AS_URL: &str =
-    "https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs";
+const VACATION_URL: &str = "https://gmail.googleapis.com/gmail/v1/users/me/settings/vacation";
+const SEND_AS_URL: &str = "https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs";
 const DRIVE_ABOUT_URL: &str =
     "https://www.googleapis.com/drive/v3/about?fields=storageQuota%28limit%2Cusage%29";
 const MAX_GOOGLE_RESPONSE_BYTES: usize = 64 * 1024;
@@ -132,13 +130,13 @@ fn selected_sender(
             continue;
         }
         if selected.is_some() {
-            return Err("Gmail send-as response has multiple matching sender identities".to_string());
+            return Err(
+                "Gmail send-as response has multiple matching sender identities".to_string(),
+            );
         }
 
-        let verification_accepted = entry
-            .get("verificationStatus")
-            .and_then(Value::as_str)
-            == Some("accepted");
+        let verification_accepted =
+            entry.get("verificationStatus").and_then(Value::as_str) == Some("accepted");
         let reply_routing_verified = match entry.get("replyToAddress").and_then(Value::as_str) {
             None | Some("") => true,
             Some(reply_to) => normalized_email(reply_to).as_deref() == Some(email.as_str()),
@@ -191,10 +189,8 @@ fn storage_free(
     }
 
     let free = limit - usage;
-    let basis_points =
-        ((u128::from(free) * 10_000_u128) / u128::from(limit)) as u16;
-    let safe =
-        free >= MIN_STORAGE_FREE_BYTES && basis_points >= MIN_STORAGE_FREE_BASIS_POINTS;
+    let basis_points = ((u128::from(free) * 10_000_u128) / u128::from(limit)) as u16;
+    let safe = free >= MIN_STORAGE_FREE_BYTES && basis_points >= MIN_STORAGE_FREE_BASIS_POINTS;
     (Some(free), Some(basis_points), Some(safe))
 }
 
@@ -450,9 +446,7 @@ mod tests {
         )
         .expect("report");
 
-        assert!(report
-            .hold_reasons
-            .contains(&"vacation_responder_enabled"));
+        assert!(report.hold_reasons.contains(&"vacation_responder_enabled"));
     }
 
     #[test]
@@ -496,11 +490,7 @@ mod tests {
 
         let external_reply = summarize(
             &healthy_vacation(),
-            &send_as(
-                "sender@example.com",
-                Some("other@example.net"),
-                "accepted",
-            ),
+            &send_as("sender@example.com", Some("other@example.net"), "accepted"),
             &safe_quota(),
             NOW,
             Some(&expected),
