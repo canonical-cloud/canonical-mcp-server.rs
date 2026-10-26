@@ -23,8 +23,11 @@ const SEND_AS_URL: &str = "https://gmail.googleapis.com/gmail/v1/users/me/settin
 const DRIVE_ABOUT_URL: &str =
     "https://www.googleapis.com/drive/v3/about?fields=storageQuota%28limit%2Cusage%29";
 const MAX_GOOGLE_RESPONSE_BYTES: usize = 64 * 1024;
+const MAX_SCAN_WINDOW_SECONDS: u64 = 45;
 const MIN_STORAGE_FREE_BYTES: u64 = 1024 * 1024 * 1024;
 const MIN_STORAGE_FREE_BASIS_POINTS: u16 = 1_000;
+const EVIDENCE_SCHEMA_VERSION: u8 = 2;
+const EVIDENCE_SOURCE_KIND: &str = "gmail_shadow_v2";
 
 pub const TOKEN_ENV: &str = "CANONICAL_GOOGLE_AUDIT_TOKEN";
 pub const EXPECTED_SENDER_SHA256_ENV: &str = "CANONICAL_GMAIL_EXPECTED_SENDER_SHA256";
