@@ -8,6 +8,7 @@ pub mod external;
 pub mod external_status;
 pub mod fiducia;
 pub mod github;
+pub mod gmail_shadow;
 pub mod health;
 pub mod k8s;
 // Finding construction is intentionally explicit at call sites so audit recommendations,
