@@ -290,7 +290,7 @@ pub fn summarize(
         hold_reasons,
         worker_sender_health,
         required_oauth_scopes: [
-            "https://www.googleapis.com/auth/gmail.settings.basic",
+            "https://www.googleapis.com/auth/gmail.readonly",
             "https://www.googleapis.com/auth/drive.metadata.readonly",
         ],
     })
