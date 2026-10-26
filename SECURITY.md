@@ -13,18 +13,24 @@ stores nothing. It makes outbound HTTPS requests to `api.github.com`,
 `raw.githubusercontent.com`, `rdap.org` (plus the registry RDAP endpoint it
 redirects to), `cloudflare-dns.com`, `api.cloudflare.com`, the `base_url`
 given to `service_health`, and (only when configured) the `FIDUCIA_URL` used
-by `fiducia_status`. `k8s_status` execs a strictly allowlisted `kubectl get`
-with your local kubeconfig; every tool is read-only.
+by `fiducia_status`. The Gmail shadow tool also uses fixed HTTPS GETs to
+`gmail.googleapis.com` settings endpoints and `www.googleapis.com/drive/v3/about`.
+`k8s_status` execs a strictly allowlisted `kubectl get` with your local
+kubeconfig; every tool is read-only.
 
 ## Secrets
 
 Never commit real secrets. The credentials this server touches are an optional
 GitHub token (`GITHUB_TOKEN`/`GH_TOKEN`, sent only to `api.github.com`), an
 optional read-only Cloudflare token (`CLOUDFLARE_API_TOKEN`, sent only to
-`api.cloudflare.com`), and an optional read-scoped fiducia.cloud bearer token
-(`FIDUCIA_TOKEN`, sent only to `FIDUCIA_URL`); none is ever logged or echoed
-into tool output. `fiducia_status` reports fiducia-managed secret *presence*
-only — it never fetches or surfaces secret values.
+`api.cloudflare.com`), an optional read-scoped fiducia.cloud bearer token
+(`FIDUCIA_TOKEN`, sent only to `FIDUCIA_URL`), and an optional Google audit
+bearer (`CANONICAL_GOOGLE_AUDIT_TOKEN`) sent only to the compiled Gmail
+settings and Drive About endpoints. None is ever logged or echoed into tool
+output. `fiducia_status` reports fiducia-managed secret *presence* only — it
+never fetches or surfaces secret values. The Gmail shadow report contains only
+hashes, quota counts, assurance states, and reason codes; it never returns the
+authenticated mailbox address or message content.
 
 ## CI supply chain
 
