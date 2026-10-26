@@ -10,6 +10,7 @@ never deployed and binds no ports.
 - `src/main.rs` — bootstrap only.
 - `src/server.rs` — tool router, parameter schemas, `ServerHandler`.
 - `src/tools/github.rs` — GitHub API client and pure JSON summarization.
+- `src/tools/gmail_shadow.rs` — fixed GET-only Gmail settings + Drive quota shadow evidence; hash-only output and no send/message surface.
 - `src/tools/health.rs` — health-endpoint probing and truncation.
 - `src/tools/docs.rs` — monorepo doc fetching plus the embedded `org-map`
   knowledge doc.
@@ -43,6 +44,10 @@ cargo test --all-targets
   the Cloudflare token only to `api.cloudflare.com`, and the fiducia token
   only to `FIDUCIA_URL`. `fiducia.rs` fetches secret *presence*, never
   secret values.
+- Gmail shadow evidence may only issue compiled GET requests to
+  `gmail.googleapis.com` settings endpoints and `www.googleapis.com/drive/v3/about`.
+  Never add Gmail message reads, send/compose/update methods, caller-supplied Google URLs,
+  or raw mailbox addresses to tool output.
 - Truncate and bound anything returned from remote services.
 
 ## Command safety
